@@ -30,12 +30,36 @@ async function init(){
  try{
   const {data:errorProducts,error}=await db.from("products").select("*").order("name");
   if(error)throw error; products=errorProducts||[];
-  const {data:eventRows,error:eventError}=await db.from("events").select("*").eq("active",true).order("created_at",{ascending:false}).limit(1);
-  if(eventError)throw eventError;
+ const {data:eventRows,error:eventError}=await db
+  .from("events")
+  .select("*")
+  .eq("active",true)
+  .order("created_at",{ascending:false})
+  .limit(1);
+
+if(eventError){
+  console.error("Error events:", eventError);
+  activeEvent=null;
+}else{
   activeEvent=eventRows?.[0]||null;
-  if(!activeEvent){
-    const {data:newEvent,error:newError}=await db.from("events").insert({name:"Kermés Septiembre 2026",active:true}).select().single();
-    if(newError)throw newError; activeEvent=newEvent;
+}
+
+if(!activeEvent){
+  const {data:newEvent,error:newError}=await db
+    .from("events")
+    .insert({
+      name:"Kermés Septiembre 2026",
+      active:true
+    })
+    .select()
+    .single();
+
+  if(newError){
+    console.error("Error creando evento:", newError);
+  }else{
+    activeEvent=newEvent;
+  }
+}
   }
   show("sell");
  }catch(e){$("screen").innerHTML=`<div class="card"><h2>⚙️ Falta conectar la base de datos</h2><p class="small">Configura Supabase en config.js y vuelve a cargar la página.</p><pre>${String(e.message||e)}</pre></div>`}
