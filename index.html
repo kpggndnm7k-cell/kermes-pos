@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827"><link rel="manifest" href="manifest.json">
+<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 <title>KERMÉS POS</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#f3f4f6;color:#111827}
@@ -20,7 +21,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid 
 </style>
 </head>
 <body>
-<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 2</div></header><main id="screen"></main>
+<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 3</div></header><main id="screen"></main>
 <nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Productos</button></nav></div>
 
 <div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video>
@@ -57,10 +58,40 @@ function csv(){let rows=[["Fecha","Total","Efectivo","Cambio","Detalle"]];sales.
 function renderProducts(){$("screen").innerHTML=`<div class="card"><h2>🎟️ Productos</h2>${Object.entries(products).map(([c,p])=>`<div class="item"><span>${p.name}<br><small>${c}</small></span><b>${money(p.price)}</b></div>`).join("")}</div>
 <div class="card"><h3>Agregar producto</h3><input id="pn" placeholder="Nombre"><input id="pp" type="number" placeholder="Precio"><input id="pc" placeholder="Código de barras"><button class="primary" onclick="addProduct()">＋ Agregar producto</button><p class="small">El código debe ser exactamente el mismo que tenga tu boleto.</p></div>`}
 function addProduct(){let n=$("pn").value.trim(),p=Number($("pp").value),c=$("pc").value.trim().toUpperCase();if(!n||!p||!c)return alert("Completa los tres campos.");products[c]={name:n,price:p};persist();renderProducts()}
-let stream=null,detector=null,scanning=false;
-async function startScan(){$("scanner").classList.remove("hidden");try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});$("video").srcObject=stream;await $("video").play();if("BarcodeDetector" in window){detector=new BarcodeDetector({formats:["code_128","ean_13","ean_8","upc_a","upc_e","qr_code"]});scanning=true;loop()}else alert("Este navegador no ofrece BarcodeDetector. Usa el campo manual.");}catch(e){alert("No se pudo abrir la cámara. Usa el campo manual.")}}
-async function loop(){if(!scanning)return;try{let c=await detector.detect($("video"));if(c.length){add(c[0].rawValue);stopScan();return}}catch(e){}requestAnimationFrame(loop)}
+let stream=null,scanning=false,zxingReader=null,scanControls=null;
+async function startScan(){
+ $("scanner").classList.remove("hidden");
+ try{
+   if(!window.ZXingBrowser || !ZXingBrowser.BrowserMultiFormatReader) throw new Error("ZXing no cargó");
+   zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+   const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+   if(!devices.length) throw new Error("No camera");
+   const back = devices.find(d => /back|rear|environment|trasera/i.test(d.label));
+   const deviceId = (back || devices[devices.length-1]).deviceId;
+   scanControls = await zxingReader.decodeFromVideoDevice(deviceId, $("video"), (result, error, controls) => {
+      if(result){
+        const text = result.getText();
+        add(text);
+        stopScan();
+      }
+   });
+   scanning=true;
+ }catch(e){
+   console.error(e);
+   alert("No se pudo iniciar el escáner. Revisa que Safari tenga permiso para usar la cámara. También puedes usar el código manual.");
+ }
+}
 function manualScan(){let c=$("manual").value;if(c){add(c);$("manual").value="";stopScan()}}
-function stopScan(){scanning=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$("scanner").classList.add("hidden")}
+function stopScan(){
+ scanning=false;
+ try{if(scanControls)scanControls.stop()}catch(e){}
+ scanControls=null;
+ try{if(zxingReader)zxingReader.reset()}catch(e){}
+ zxingReader=null;
+ if(stream)stream.getTracks().forEach(t=>t.stop());
+ stream=null;
+ $("video").srcObject=null;
+ $("scanner").classList.add("hidden");
+}
 show("sell");
 </script></body></html>
