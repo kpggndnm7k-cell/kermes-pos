@@ -3,190 +3,52 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827"><link rel="manifest" href="manifest.json">
-<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
-<title>KERMÉS POS</title>
+<title>KERMÉS POS v6</title>
 <style>
-:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#f3f4f6;color:#111827}
-*{box-sizing:border-box}body{margin:0}.app{max-width:760px;margin:auto;min-height:100vh;padding-bottom:90px}
-header{background:#111827;color:#fff;padding:20px 18px;position:sticky;top:0;z-index:5}h1{margin:0;font-size:27px}.sub{font-size:13px;opacity:.7;margin-top:3px}
-main{padding:15px}.card{background:#fff;border-radius:20px;padding:16px;margin-bottom:14px;box-shadow:0 4px 18px #0000000d}
-button{border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700}.primary{background:#111827;color:#fff;width:100%}.green{background:#16a34a;color:#fff;width:100%}
+body{margin:0;background:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}
+*{box-sizing:border-box}.app{max-width:760px;margin:auto;min-height:100vh;padding-bottom:88px}header{background:#111827;color:#fff;padding:20px 18px;position:sticky;top:0;z-index:5}
+h1{margin:0;font-size:27px}.sub{font-size:13px;opacity:.7;margin-top:3px}main{padding:15px}.card{background:#fff;border-radius:20px;padding:16px;margin-bottom:14px;box-shadow:0 4px 18px #0001}
+button{border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700}.primary{background:#111827;color:#fff;width:100%}.green{background:#16a34a;color:#fff;width:100%}.danger{background:#fee2e2;color:#991b1b}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.product{background:#eef2ff;text-align:left;min-height:90px}.product b{display:block;font-size:18px}.product span{display:block;color:#4b5563;margin-top:5px}
-input{width:100%;padding:14px;border:1px solid #d1d5db;border-radius:13px;font-size:17px;margin:6px 0 10px}.row{display:flex;gap:9px}.row>*{flex:1}
-.total{text-align:center;font-size:42px;font-weight:800;margin:10px 0 15px}.change{text-align:center;font-size:34px;font-weight:800;color:#16a34a;margin:8px 0}
-.item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eee}.small{font-size:13px;color:#6b7280}.danger{background:#fee2e2;color:#991b1b}
+input,select{width:100%;padding:14px;border:1px solid #d1d5db;border-radius:13px;font-size:17px;margin:6px 0 10px}.row{display:flex;gap:9px}.row>*{flex:1}.total{text-align:center;font-size:42px;font-weight:800;margin:10px 0 15px}.change{text-align:center;font-size:34px;font-weight:800;color:#16a34a;margin:8px 0}
+.item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eee}.small{font-size:13px;color:#6b7280}.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#e5e7eb;font-size:12px}
 nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;display:flex;justify-content:center;gap:5px;padding:9px;z-index:10}nav button{background:#fff;padding:12px}.active{background:#e5e7eb!important}
-.modal{position:fixed;inset:0;background:#0009;z-index:20;display:flex;align-items:flex-end}.sheet{background:#fff;border-radius:24px 24px 0 0;padding:18px;width:100%;max-width:760px;margin:auto}video{width:100%;border-radius:18px;background:#000;max-height:55vh}
-.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#e5e7eb;font-size:12px}.hidden{display:none}
+.modal{position:fixed;inset:0;background:#0009;z-index:20;display:flex;align-items:flex-end}.sheet{background:#fff;border-radius:24px 24px 0 0;padding:18px;width:100%;max-width:760px;margin:auto}video{width:100%;border-radius:18px;background:#000;max-height:55vh}.hidden{display:none}
 </style>
 </head>
 <body>
-<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 5</div></header><main id="screen"></main>
-<nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Productos</button></nav></div>
-
-<div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video>
-<p class="small">Apunta al código de barras. Si el navegador no permite escaneo, usa el código manual.</p>
-<input id="manual" placeholder="Ej. KERMES-TACO"><div class="row"><button class="primary" onclick="manualScan()">Agregar</button><button class="danger" onclick="stopScan()">Cerrar</button></div></div></div>
-
+<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 6</div></header><main id="screen"></main>
+<nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Boletos</button><button id="nConfig" onclick="show('config')">⚙️ Admin</button></nav></div>
+<div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video><p class="small">Escanea un boleto generado en el sistema.</p><input id="manual" placeholder="Código manual"><div class="row"><button class="primary" onclick="manualScan()">Agregar</button><button class="danger" onclick="stopScan()">Cerrar</button></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
 <script>
-const DEFAULTS={
-"KERMES-TACO":{name:"🌮 Taco",price:25},
-"KERMES-REFRESCO":{name:"🥤 Refresco",price:20},
-"KERMES-PASTEL":{name:"🍰 Pastel",price:30}
-};
-let products=JSON.parse(localStorage.getItem("kposProducts")||"null")||DEFAULTS;
-let cart=[],sales=JSON.parse(localStorage.getItem("kposSales")||"[]");
-let cashIn=Number(localStorage.getItem("kposIn")||0),cashOut=Number(localStorage.getItem("kposOut")||0);
+const {createClient}=supabase; const db=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), money=n=>"$"+Number(n).toFixed(2);
-function persist(){localStorage.setItem("kposProducts",JSON.stringify(products));localStorage.setItem("kposSales",JSON.stringify(sales));localStorage.setItem("kposIn",cashIn);localStorage.setItem("kposOut",cashOut)}
-function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
-function show(t){document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));$("n"+(t==="sell"?"Sell":t==="close"?"Close":"Products")).classList.add("active");t==="sell"?renderSell():t==="close"?renderClose():renderProducts()}
-function add(code){
- code=code.trim().toUpperCase();
- const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
- const used=JSON.parse(localStorage.getItem("kposUsed")||"{}");
- if(code.startsWith("KRM-")){
-   const ticket=issued[code];
-   if(!ticket)return alert("⚠️ Boleto no válido o no emitido.");
-   if(used[code])return alert("🚫 BOLETO YA UTILIZADO\nFolio: "+ticket.folio);
-   const p=products[ticket.productCode];
-   if(!p)return alert("Producto del boleto no existe.");
-   used[code]={usedAt:new Date().toISOString()};
-   localStorage.setItem("kposUsed",JSON.stringify(used));
-   let x=cart.find(i=>i.code===code);
-   x?x.qty++:cart.push({code,name:p.name,price:p.price,qty:1,ticket:true,folio:ticket.folio});
-   renderSell(); return;
- }
- let p=products[code];
- if(!p)return alert("Código no registrado: "+code);
- let x=cart.find(i=>i.code===code);x?x.qty++:cart.push({code,...p,qty:1});renderSell()
-}
-function renderSell(){
-$("screen").innerHTML=`<div class="card"><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button><p class="small">También puedes tocar un producto para probar.</p>
-<div class="grid">${Object.entries(products).map(([c,p])=>`<button class="product" onclick="add('${c}')"><b>${p.name}</b><span>${money(p.price)}</span></button>`).join("")}</div></div>
-<div class="card"><h3>Venta actual</h3>${cart.length?cart.map(x=>`<div class="item"><span>${x.name} × ${x.qty}</span><b>${money(x.price*x.qty)}</b></div>`).join(""):'<p class="small">Sin productos.</p>'}
-<div class="total">${money(total())}</div><input id="received" type="number" inputmode="decimal" placeholder="Efectivo recibido" oninput="change()"><div id="chg" class="change">$0.00</div>
-<button class="green" onclick="charge()">✓ COBRAR</button><button class="danger" style="width:100%;margin-top:8px" onclick="cart=[];renderSell()">Vaciar</button></div>`}
-function change(){let r=Number($("received")?.value||0);$("chg").textContent=money(Math.max(0,r-total()))}
-function charge(){if(!cart.length)return alert("No hay productos.");let r=Number($("received").value||0),t=total();if(r<t)return alert("El efectivo es menor al total.");sales.push({date:new Date().toISOString(),items:cart,total:t,cash:r,change:r-t});cashIn+=r;persist();alert("Venta registrada\nCambio: "+money(r-t));cart=[];renderSell()}
-function renderClose(){let sold=sales.reduce((s,x)=>s+x.total,0);$("screen").innerHTML=`<div class="card"><h2>📊 Corte de caja</h2>
-<div class="item"><span>Ventas</span><b>${money(sold)}</b></div><div class="item"><span>Entradas de efectivo</span><b>${money(cashIn)}</b></div><div class="item"><span>Salidas</span><b>${money(cashOut)}</b></div><div class="total">${money(cashIn-cashOut)}</div><p class="small">Efectivo esperado.</p></div>
-<div class="card"><h3>Registrar salida</h3><div class="row"><input id="out" type="number" inputmode="decimal" placeholder="$"><button class="danger" onclick="out()">Registrar</button></div><p><span class="badge">${sales.length} ventas</span></p><button class="primary" onclick="csv()">⬇️ Exportar ventas</button></div>`}
-function out(){let n=Number($("out").value||0);if(n<=0)return;cashOut+=n;persist();renderClose()}
-function csv(){let rows=[["Fecha","Total","Efectivo","Cambio","Detalle"]];sales.forEach(s=>rows.push([s.date,s.total,s.cash,s.change,s.items.map(i=>i.name+" x"+i.qty).join(" | ")]));let text=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="kermes_ventas.csv";a.click()}
-function renderProducts(){
- const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
- const used=JSON.parse(localStorage.getItem("kposUsed")||"{}");
- $("screen").innerHTML=`<div class="card"><h2>🎟️ Generador de boletos</h2>
- <p class="small">Cada boleto tendrá un folio único. El código de barras se asociará al producto.</p>
- <select id="gp" style="width:100%;padding:14px;border:1px solid #d1d5db;border-radius:13px;font-size:17px;margin:6px 0 10px">
- ${Object.entries(products).map(([c,p])=>`<option value="${c}">${p.name} — ${money(p.price)}</option>`).join("")}</select>
- <input id="gqty" type="number" min="1" value="10" placeholder="Cantidad">
- <button class="primary" onclick="generateTickets()">🎟️ Generar boletos</button>
- </div>
- <div class="card"><h3>Resumen de boletos</h3>
- <div class="item"><span>Emitidos</span><b>${Object.keys(issued).length}</b></div>
- <div class="item"><span>Utilizados</span><b>${Object.keys(used).length}</b></div>
- <div class="item"><span>Disponibles</span><b>${Math.max(0,Object.keys(issued).length-Object.keys(used).length)}</b></div>
- </div>
- <div class="card"><h3>Productos y códigos</h3>
- ${Object.entries(products).map(([c,p])=>`<div class="item"><span>${p.name}<br><small>${c}</small></span><b>${money(p.price)}</b></div>`).join("")}
- </div>`;
-}
-function generateTickets(){
- const code=String($("gp").value), qty=Math.max(1,Math.floor(Number($("gqty").value||0)));
- if(!qty)return;
- const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
- let seq=Number(localStorage.getItem("kposSeq")||0);
- let created=[];
- for(let i=0;i<qty;i++){
-   seq++;
-   const folio=String(seq).padStart(6,"0");
-   const barcode=`KRM-${code.replace(/[^A-Z0-9]/gi,"").slice(0,12)}-${folio}`.toUpperCase();
-   issued[barcode]={folio,productCode:code,name:products[code].name,price:products[code].price,createdAt:new Date().toISOString()};
-   created.push(barcode);
- }
- localStorage.setItem("kposIssued",JSON.stringify(issued));
- localStorage.setItem("kposSeq",String(seq));
- // Create a printable HTML document with Code 128 images generated by the browser library.
- const w=window.open("","_blank");
- if(!w){alert("Permite ventanas emergentes para generar los boletos.");return}
- const details = JSON.stringify(issued);
- const data = JSON.stringify(created);
- w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Boletos Kermés</title>
- <style>
- body{font-family:Arial,sans-serif;margin:15px}.ticket{display:inline-block;width:45%;margin:1%;padding:15px;border:2px dashed #333;text-align:center;vertical-align:top;page-break-inside:avoid}.ticket h2{margin:0 0 8px}.price{font-size:25px;font-weight:bold}.ticket svg{max-width:100%;height:70px}@media print{button{display:none}.ticket{width:45%}}
- </style></head><body><button onclick="print()">🖨️ Imprimir</button><div id="tickets"></div>
- <script>
- const DATA=${data}, DETAILS=${details};
- // Code 128B patterns (official symbol patterns, 0-106)
- const PAT=[
- "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
- "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
- "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
- "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
- "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
- "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
- "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
- "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
- "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
- "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
- "114131","311141","411131","211412","211214","211232","2331112"
- ];
- function enc128B(s){
-   const vals=[104];
-   for(let i=0;i<s.length;i++){let c=s.charCodeAt(i); if(c<32||c>127) throw new Error("Código no compatible"); vals.push(c-32);}
-   let sum=104; for(let i=1;i<vals.length;i++) sum+=vals[i]*i;
-   vals.push(sum%103); vals.push(106); return vals;
- }
- function svgBarcode(text){
-   const vals=enc128B(text); let x=8, bars="";
-   for(const v of vals){const p=PAT[v]; for(let i=0;i<p.length;i++){const w=Number(p[i]); if(i%2===0) bars+=\`<rect x="\${x}" y="4" width="\${w}" height="52"/>\`; x+=w;}}
-   return \`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 \${x+8} 62"><rect width="100%" height="100%" fill="white"/>\${bars}</svg>\`;
- }
- const box=document.getElementById("tickets");
- DATA.forEach(c=>{const d=DETAILS[c];const el=document.createElement("div");el.className="ticket";
- el.innerHTML='<h2>🎪 KERMÉS 2026</h2><div>'+d.name+'</div><div class="price">$'+Number(d.price).toFixed(2)+'</div>'+svgBarcode(c)+'<div>'+c+'</div>';
- box.appendChild(el);});
- <\/script></body></html>`);
- w.document.close();
- persist(); renderProducts();
-}
+let products=[],cart=[],sales=[],cashIn=0,cashOut=0,stream=null,scanControls=null,reader=null;
 
-let stream=null,scanning=false,zxingReader=null,scanControls=null;
-async function startScan(){
- $("scanner").classList.remove("hidden");
+async function init(){
  try{
-   if(!window.ZXingBrowser || !ZXingBrowser.BrowserMultiFormatReader) throw new Error("ZXing no cargó");
-   zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
-   const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-   if(!devices.length) throw new Error("No camera");
-   const back = devices.find(d => /back|rear|environment|trasera/i.test(d.label));
-   const deviceId = (back || devices[devices.length-1]).deviceId;
-   scanControls = await zxingReader.decodeFromVideoDevice(deviceId, $("video"), (result, error, controls) => {
-      if(result){
-        const text = result.getText();
-        add(text);
-        stopScan();
-      }
-   });
-   scanning=true;
- }catch(e){
-   console.error(e);
-   alert("No se pudo iniciar el escáner. Revisa que Safari tenga permiso para usar la cámara. También puedes usar el código manual.");
- }
+  const {data,error}=await db.from("products").select("*").order("name");
+  if(error)throw error; products=data||[];
+  show("sell");
+ }catch(e){$("screen").innerHTML=`<div class="card"><h2>⚙️ Falta conectar la base de datos</h2><p class="small">Configura Supabase en config.js y vuelve a cargar la página.</p><pre>${String(e.message||e)}</pre></div>`}
 }
-function manualScan(){let c=$("manual").value;if(c){add(c);$("manual").value="";stopScan()}}
-function stopScan(){
- scanning=false;
- try{if(scanControls)scanControls.stop()}catch(e){}
- scanControls=null;
- try{if(zxingReader)zxingReader.reset()}catch(e){}
- zxingReader=null;
- if(stream)stream.getTracks().forEach(t=>t.stop());
- stream=null;
- $("video").srcObject=null;
- $("scanner").classList.add("hidden");
-}
-show("sell");
+function navActive(t){document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));$("n"+({sell:"Sell",close:"Close",products:"Products",config:"Config"}[t])).classList.add("active")}
+async function show(t){navActive(t);if(t==="sell")renderSell();if(t==="close")await renderClose();if(t==="products")await renderTickets();if(t==="config")renderConfig()}
+function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
+function addProduct(p){let x=cart.find(i=>i.id===p.id);x?x.qty++:cart.push({...p,qty:1});renderSell()}
+function renderSell(){$("screen").innerHTML=`<div class="card"><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button><p class="small">También puedes tocar un producto.</p><div class="grid">${products.map(p=>`<button class="product" onclick='addProduct(${JSON.stringify(p)})'><b>${p.name}</b><span>${money(p.price)}</span></button>`).join("")}</div></div><div class="card"><h3>Venta actual</h3>${cart.length?cart.map(x=>`<div class="item"><span>${x.name} × ${x.qty}</span><b>${money(x.price*x.qty)}</b></div>`).join(""):'<p class="small">Sin productos.</p>'}<div class="total">${money(total())}</div><input id="received" type="number" inputmode="decimal" placeholder="Efectivo recibido" oninput="calcChange()"><div id="chg" class="change">$0.00</div><button class="green" onclick="charge()">✓ COBRAR</button><button class="danger" style="width:100%;margin-top:8px" onclick="cart=[];renderSell()">Vaciar</button></div>`}
+function calcChange(){let r=Number($("received")?.value||0);$("chg").textContent=money(Math.max(0,r-total()))}
+async function charge(){if(!cart.length)return alert("No hay productos.");let r=Number($("received").value||0),t=total();if(r<t)return alert("El efectivo es menor al total.");let {error}=await db.from("sales").insert({total:t,cash_received:r,change_given:r-t,items:cart});if(error)return alert(error.message);alert("Venta registrada\nCambio: "+money(r-t));cart=[];renderSell()}
+async function renderClose(){let {data:s}=await db.from("sales").select("*").order("created_at",{ascending:false});sales=s||[];let sold=sales.reduce((a,x)=>a+Number(x.total),0);let {data:m}=await db.from("cash_movements").select("*");let ins=(m||[]).filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount),0);let outs=(m||[]).filter(x=>x.type==="out").reduce((a,x)=>a+Number(x.amount),0);$("screen").innerHTML=`<div class="card"><h2>📊 Corte de caja</h2><div class="item"><span>Ventas</span><b>${money(sold)}</b></div><div class="item"><span>Entradas</span><b>${money(ins)}</b></div><div class="item"><span>Salidas</span><b>${money(outs)}</b></div><div class="total">${money(sales.reduce((a,x)=>a+Number(x.cash_received),0)+ins-outs)}</div><p class="small">Efectivo esperado según movimientos.</p></div><div class="card"><h3>Registrar salida</h3><input id="out" type="number" placeholder="$"><button class="danger" style="width:100%" onclick="addOut()">Registrar salida</button><p><span class="badge">${sales.length} ventas</span></p></div>`}
+async function addOut(){let n=Number($("out").value||0);if(n<=0)return;let {error}=await db.from("cash_movements").insert({type:"out",amount:n,description:"Salida de caja"});if(error)return alert(error.message);renderClose()}
+async function renderTickets(){let {data:tickets}=await db.from("tickets").select("*").order("created_at",{ascending:false}).limit(50);tickets=tickets||[];let {count:issued}=await db.from("tickets").select("*",{count:"exact",head:true});let {count:used}=await db.from("tickets").select("*",{count:"exact",head:true}).eq("used",true);$("screen").innerHTML=`<div class="card"><h2>🎟️ Boletos</h2><div class="item"><span>Emitidos</span><b>${issued||0}</b></div><div class="item"><span>Utilizados</span><b>${used||0}</b></div><div class="item"><span>Disponibles</span><b>${(issued||0)-(used||0)}</b></div></div><div class="card"><h3>Generar boletos</h3><select id="tp">${products.map(p=>`<option value="${p.id}">${p.name} — ${money(p.price)}</option>`).join("")}</select><input id="tq" type="number" min="1" value="10"><button class="primary" onclick="generateTickets()">🎟️ Generar e imprimir</button></div><div class="card"><h3>Últimos boletos</h3>${tickets.map(t=>`<div class="item"><span>${t.name}<br><small>${t.barcode}</small></span><b>${t.used?"🚫":"✅"}</b></div>`).join("")}</div>`}
+async function generateTickets(){let product=products.find(p=>p.id==$("tp").value),qty=Math.max(1,Math.floor(Number($("tq").value||0)));if(!product||!qty)return;let arr=[];for(let i=0;i<qty;i++){let barcode="KRM-"+crypto.randomUUID().replaceAll("-","").slice(0,18).toUpperCase();arr.push({barcode,product_id:product.id,name:product.name,price:product.price,used:false})}let {data,error}=await db.from("tickets").insert(arr).select();if(error)return alert(error.message);let w=window.open("","_blank");if(!w)return alert("Permite ventanas emergentes.");w.document.write(`<html><head><title>Boletos</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script><style>body{font-family:Arial}.ticket{display:inline-block;width:45%;margin:1%;padding:15px;border:2px dashed;text-align:center}.price{font-size:24px;font-weight:bold}@media print{button{display:none}}</style></head><body><button onclick="print()">🖨️ Imprimir</button><div id="x"></div><script>const a=${JSON.stringify(arr)};const x=document.getElementById("x");a.forEach(t=>{x.innerHTML+=\`<div class="ticket"><h2>🎪 KERMÉS 2026</h2><div>\${t.name}</div><div class="price">$\${Number(t.price).toFixed(2)}</div><svg id="\${t.barcode}"></svg><div>\${t.barcode}</div></div>\`;JsBarcode("#"+t.barcode,t.barcode,{format:"CODE128",displayValue:false,height:55,margin:5});});<\/script></body></html>`);w.document.close();renderTickets()}
+async function renderConfig(){$("screen").innerHTML=`<div class="card"><h2>⚙️ Administración</h2><p>La base de datos es central: los boletos generados aquí se pueden escanear desde cualquier dispositivo conectado a esta app.</p><button class="danger" style="width:100%" onclick="resetTickets()">♻️ RESET DE BOLETOS</button><p class="small">Esto marca como eliminados todos los boletos y empieza el contador lógico desde cero. Las ventas no se borran.</p></div>`}
+async function resetTickets(){if(!confirm("¿Seguro? Esto eliminará todos los boletos y su estado de uso. Las ventas no se borrarán."))return;let {error}=await db.from("tickets").delete().neq("barcode","");if(error)return alert(error.message);alert("Boletos reiniciados. Ya puedes comenzar de cero.");renderConfig()}
+async function startScan(){ $("scanner").classList.remove("hidden"); try{if(!window.ZXingBrowser)throw new Error("Lector no disponible");reader=new ZXingBrowser.BrowserMultiFormatReader();let ds=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();let d=ds.find(x=>/back|rear|environment|trasera/i.test(x.label))||ds[ds.length-1];scanControls=await reader.decodeFromVideoDevice(d.deviceId,$("video"),async(result)=>{if(result){await useTicket(result.getText());stopScan()}})}catch(e){alert("No se pudo iniciar el escáner. Revisa permisos de cámara.")}}
+async function useTicket(barcode){let {data:t,error}=await db.from("tickets").select("*").eq("barcode",barcode.trim()).single();if(error||!t)return alert("⚠️ BOLETO NO VÁLIDO O NO EMITIDO");if(t.used)return alert("🚫 BOLETO YA UTILIZADO");let {error:u}=await db.from("tickets").update({used:true,used_at:new Date().toISOString()}).eq("id",t.id).eq("used",false);if(u)return alert(u.message);let p=products.find(x=>x.id===t.product_id);if(!p)return alert("Producto no encontrado.");addProduct(p);alert("✅ Boleto válido\n"+t.name+" — "+money(t.price))}
+function manualScan(){let c=$("manual").value.trim();if(c){useTicket(c);$("manual").value="";stopScan()}}
+function stopScan(){try{if(scanControls)scanControls.stop()}catch(e){}try{if(reader)reader.reset()}catch(e){}scanControls=null;reader=null;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$("video").srcObject=null;$("scanner").classList.add("hidden")}
+init();
 </script></body></html>
