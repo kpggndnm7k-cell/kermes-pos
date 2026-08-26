@@ -17,19 +17,26 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid 
 </style>
 </head>
 <body>
-<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 6</div></header><main id="screen"></main>
+<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 7</div></header><main id="screen"></main>
 <nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Boletos</button><button id="nConfig" onclick="show('config')">⚙️ Admin</button></nav></div>
 <div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video><p class="small">Escanea un boleto generado en el sistema.</p><input id="manual" placeholder="Código manual"><div class="row"><button class="primary" onclick="manualScan()">Agregar</button><button class="danger" onclick="stopScan()">Cerrar</button></div></div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://unpkg.com/@zxing/browser@0.2.1"></script><script src="config.js"></script>
 <script>
 const {createClient}=supabase; const db=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), money=n=>"$"+Number(n).toFixed(2);
-let products=[],cart=[],sales=[],cashIn=0,cashOut=0,stream=null,scanControls=null,reader=null;
+let products=[],cart=[],sales=[],cashIn=0,cashOut=0,stream=null,scanControls=null,reader=null,activeEvent=null;
 
 async function init(){
  try{
-  const {data,error}=await db.from("products").select("*").order("name");
-  if(error)throw error; products=data||[];
+  const {data:errorProducts,error}=await db.from("products").select("*").order("name");
+  if(error)throw error; products=errorProducts||[];
+  const {data:eventRows,error:eventError}=await db.from("events").select("*").eq("active",true).order("created_at",{ascending:false}).limit(1);
+  if(eventError)throw eventError;
+  activeEvent=eventRows?.[0]||null;
+  if(!activeEvent){
+    const {data:newEvent,error:newError}=await db.from("events").insert({name:"Kermés Septiembre 2026",active:true}).select().single();
+    if(newError)throw newError; activeEvent=newEvent;
+  }
   show("sell");
  }catch(e){$("screen").innerHTML=`<div class="card"><h2>⚙️ Falta conectar la base de datos</h2><p class="small">Configura Supabase en config.js y vuelve a cargar la página.</p><pre>${String(e.message||e)}</pre></div>`}
 }
@@ -39,15 +46,42 @@ function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
 function addProduct(p){let x=cart.find(i=>i.id===p.id);x?x.qty++:cart.push({...p,qty:1});renderSell()}
 function renderSell(){$("screen").innerHTML=`<div class="card"><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button><p class="small">También puedes tocar un producto.</p><div class="grid">${products.map(p=>`<button class="product" onclick='addProduct(${JSON.stringify(p)})'><b>${p.name}</b><span>${money(p.price)}</span></button>`).join("")}</div></div><div class="card"><h3>Venta actual</h3>${cart.length?cart.map(x=>`<div class="item"><span>${x.name} × ${x.qty}</span><b>${money(x.price*x.qty)}</b></div>`).join(""):'<p class="small">Sin productos.</p>'}<div class="total">${money(total())}</div><input id="received" type="number" inputmode="decimal" placeholder="Efectivo recibido" oninput="calcChange()"><div id="chg" class="change">$0.00</div><button class="green" onclick="charge()">✓ COBRAR</button><button class="danger" style="width:100%;margin-top:8px" onclick="cart=[];renderSell()">Vaciar</button></div>`}
 function calcChange(){let r=Number($("received")?.value||0);$("chg").textContent=money(Math.max(0,r-total()))}
-async function charge(){if(!cart.length)return alert("No hay productos.");let r=Number($("received").value||0),t=total();if(r<t)return alert("El efectivo es menor al total.");let {error}=await db.from("sales").insert({total:t,cash_received:r,change_given:r-t,items:cart});if(error)return alert(error.message);alert("Venta registrada\nCambio: "+money(r-t));cart=[];renderSell()}
-async function renderClose(){let {data:s}=await db.from("sales").select("*").order("created_at",{ascending:false});sales=s||[];let sold=sales.reduce((a,x)=>a+Number(x.total),0);let {data:m}=await db.from("cash_movements").select("*");let ins=(m||[]).filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount),0);let outs=(m||[]).filter(x=>x.type==="out").reduce((a,x)=>a+Number(x.amount),0);$("screen").innerHTML=`<div class="card"><h2>📊 Corte de caja</h2><div class="item"><span>Ventas</span><b>${money(sold)}</b></div><div class="item"><span>Entradas</span><b>${money(ins)}</b></div><div class="item"><span>Salidas</span><b>${money(outs)}</b></div><div class="total">${money(sales.reduce((a,x)=>a+Number(x.cash_received),0)+ins-outs)}</div><p class="small">Efectivo esperado según movimientos.</p></div><div class="card"><h3>Registrar salida</h3><input id="out" type="number" placeholder="$"><button class="danger" style="width:100%" onclick="addOut()">Registrar salida</button><p><span class="badge">${sales.length} ventas</span></p></div>`}
-async function addOut(){let n=Number($("out").value||0);if(n<=0)return;let {error}=await db.from("cash_movements").insert({type:"out",amount:n,description:"Salida de caja"});if(error)return alert(error.message);renderClose()}
-async function renderTickets(){let {data:tickets}=await db.from("tickets").select("*").order("created_at",{ascending:false}).limit(50);tickets=tickets||[];let {count:issued}=await db.from("tickets").select("*",{count:"exact",head:true});let {count:used}=await db.from("tickets").select("*",{count:"exact",head:true}).eq("used",true);$("screen").innerHTML=`<div class="card"><h2>🎟️ Boletos</h2><div class="item"><span>Emitidos</span><b>${issued||0}</b></div><div class="item"><span>Utilizados</span><b>${used||0}</b></div><div class="item"><span>Disponibles</span><b>${(issued||0)-(used||0)}</b></div></div><div class="card"><h3>Generar boletos</h3><select id="tp">${products.map(p=>`<option value="${p.id}">${p.name} — ${money(p.price)}</option>`).join("")}</select><input id="tq" type="number" min="1" value="10"><button class="primary" onclick="generateTickets()">🎟️ Generar e imprimir</button></div><div class="card"><h3>Últimos boletos</h3>${tickets.map(t=>`<div class="item"><span>${t.name}<br><small>${t.barcode}</small></span><b>${t.used?"🚫":"✅"}</b></div>`).join("")}</div>`}
-async function generateTickets(){let product=products.find(p=>p.id==$("tp").value),qty=Math.max(1,Math.floor(Number($("tq").value||0)));if(!product||!qty)return;let arr=[];for(let i=0;i<qty;i++){let barcode="KRM-"+crypto.randomUUID().replaceAll("-","").slice(0,18).toUpperCase();arr.push({barcode,product_id:product.id,name:product.name,price:product.price,used:false})}let {data,error}=await db.from("tickets").insert(arr).select();if(error)return alert(error.message);let w=window.open("","_blank");if(!w)return alert("Permite ventanas emergentes.");w.document.write(`<html><head><title>Boletos</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script><style>body{font-family:Arial}.ticket{display:inline-block;width:45%;margin:1%;padding:15px;border:2px dashed;text-align:center}.price{font-size:24px;font-weight:bold}@media print{button{display:none}}</style></head><body><button onclick="print()">🖨️ Imprimir</button><div id="x"></div><script>const a=${JSON.stringify(arr)};const x=document.getElementById("x");a.forEach(t=>{x.innerHTML+=\`<div class="ticket"><h2>🎪 KERMÉS 2026</h2><div>\${t.name}</div><div class="price">$\${Number(t.price).toFixed(2)}</div><svg id="\${t.barcode}"></svg><div>\${t.barcode}</div></div>\`;JsBarcode("#"+t.barcode,t.barcode,{format:"CODE128",displayValue:false,height:55,margin:5});});<\/script></body></html>`);w.document.close();renderTickets()}
-async function renderConfig(){$("screen").innerHTML=`<div class="card"><h2>⚙️ Administración</h2><p>La base de datos es central: los boletos generados aquí se pueden escanear desde cualquier dispositivo conectado a esta app.</p><button class="danger" style="width:100%" onclick="resetTickets()">♻️ RESET DE BOLETOS</button><p class="small">Esto marca como eliminados todos los boletos y empieza el contador lógico desde cero. Las ventas no se borran.</p></div>`}
-async function resetTickets(){if(!confirm("¿Seguro? Esto eliminará todos los boletos y su estado de uso. Las ventas no se borrarán."))return;let {error}=await db.from("tickets").delete().neq("barcode","");if(error)return alert(error.message);alert("Boletos reiniciados. Ya puedes comenzar de cero.");renderConfig()}
+async function charge(){if(!cart.length)return alert("No hay productos.");let r=Number($("received").value||0),t=total();if(r<t)return alert("El efectivo es menor al total.");let {error}=await db.from("sales").insert({event_id:activeEvent.id,total:t,cash_received:r,change_given:r-t,items:cart});if(error)return alert(error.message);alert("Venta registrada\nCambio: "+money(r-t));cart=[];renderSell()}
+async function renderClose(){let {data:s}=await db.from("sales").select("*").eq("event_id",activeEvent.id).order("created_at",{ascending:false});sales=s||[];let sold=sales.reduce((a,x)=>a+Number(x.total),0);let {data:m}=await db.from("cash_movements").select("*").eq("event_id",activeEvent.id);let ins=(m||[]).filter(x=>x.type==="in").reduce((a,x)=>a+Number(x.amount),0);let outs=(m||[]).filter(x=>x.type==="out").reduce((a,x)=>a+Number(x.amount),0);$("screen").innerHTML=`<div class="card"><h2>📊 Corte de caja</h2><div class="item"><span>Ventas</span><b>${money(sold)}</b></div><div class="item"><span>Entradas</span><b>${money(ins)}</b></div><div class="item"><span>Salidas</span><b>${money(outs)}</b></div><div class="total">${money(sales.reduce((a,x)=>a+Number(x.cash_received),0)+ins-outs)}</div><p class="small">Efectivo esperado según movimientos.</p></div><div class="card"><h3>Registrar salida</h3><input id="out" type="number" placeholder="$"><button class="danger" style="width:100%" onclick="addOut()">Registrar salida</button><p><span class="badge">${sales.length} ventas</span></p></div>`}
+async function addOut(){let n=Number($("out").value||0);if(n<=0)return;let {error}=await db.from("cash_movements").insert({event_id:activeEvent.id,type:"out",amount:n,description:"Salida de caja"});if(error)return alert(error.message);renderClose()}
+async function renderTickets(){let {data:tickets}=await db.from("tickets").select("*").eq("event_id",activeEvent.id).order("created_at",{ascending:false}).limit(50);tickets=tickets||[];let {count:issued}=await db.from("tickets").select("*",{count:"exact",head:true}).eq("event_id",activeEvent.id);let {count:used}=await db.from("tickets").select("*",{count:"exact",head:true}).eq("event_id",activeEvent.id).eq("used",true);$("screen").innerHTML=`<div class="card"><h2>🎟️ Boletos</h2><div class="item"><span>Emitidos</span><b>${issued||0}</b></div><div class="item"><span>Utilizados</span><b>${used||0}</b></div><div class="item"><span>Disponibles</span><b>${(issued||0)-(used||0)}</b></div></div><div class="card"><h3>Generar boletos</h3><select id="tp">${products.map(p=>`<option value="${p.id}">${p.name} — ${money(p.price)}</option>`).join("")}</select><input id="tq" type="number" min="1" value="10"><button class="primary" onclick="generateTickets()">🎟️ Generar e imprimir</button></div><div class="card"><h3>Últimos boletos</h3>${tickets.map(t=>`<div class="item"><span>${t.name}<br><small>${t.barcode}</small></span><b>${t.used?"🚫":"✅"}</b></div>`).join("")}</div>`}
+async function generateTickets(){
+ let product=products.find(p=>p.id==$("tp").value),qty=Math.max(1,Math.floor(Number($("tq").value||0)));
+ if(!activeEvent||!product||!qty)return;
+ let arr=[];
+ for(let i=0;i<qty;i++){
+   let barcode="KRM-"+crypto.randomUUID().replaceAll("-","").slice(0,18).toUpperCase();
+   arr.push({event_id:activeEvent.id,barcode,product_id:product.id,name:product.name,price:product.price,used:false});
+ }
+ let {data,error}=await db.from("tickets").insert(arr).select();
+ if(error)return alert(error.message);
+ let w=window.open("","_blank");if(!w)return alert("Permite ventanas emergentes.");
+ w.document.write(`<html><head><title>Boletos</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script><style>body{font-family:Arial}.ticket{display:inline-block;width:45%;margin:1%;padding:15px;border:2px dashed;text-align:center}.price{font-size:24px;font-weight:bold}@media print{button{display:none}}</style></head><body><button onclick="print()">🖨️ Imprimir</button><div id="x"></div><script>const a=${JSON.stringify(arr)};const x=document.getElementById("x");a.forEach(t=>{x.innerHTML+=\`<div class="ticket"><h2>🎪 ${activeEvent.name}</h2><div>\${t.name}</div><div class="price">$\${Number(t.price).toFixed(2)}</div><svg id="\${t.barcode}"></svg><div>\${t.barcode}</div></div>\`;JsBarcode("#"+t.barcode,t.barcode,{format:"CODE128",displayValue:false,height:55,margin:5});});<\/script></body></html>`);
+ w.document.close();renderTickets()
+}
+async function renderConfig(){
+ $("screen").innerHTML=`<div class="card"><h2>⚙️ Administración</h2>
+ <p><b>Evento activo:</b><br>${activeEvent?.name||"Sin evento"}</p>
+ <button class="primary" style="margin-top:8px" onclick="newEvent()">🎪 NUEVA KERMÉS</button>
+ <p class="small">Al crear una nueva kermés, los boletos y ventas anteriores se conservan. El nuevo evento empieza vacío.</p>
+ </div>`;
+}
+async function newEvent(){
+ const name=prompt("Nombre de la nueva kermés:", "Nueva Kermés");
+ if(!name?.trim())return;
+ const {error:offError}=await db.from("events").update({active:false}).eq("active",true);
+ if(offError)return alert(offError.message);
+ const {data,error}=await db.from("events").insert({name:name.trim(),active:true}).select().single();
+ if(error)return alert(error.message);
+ activeEvent=data;cart=[];alert("🎪 Nuevo evento creado: "+activeEvent.name);show("sell");
+}
 async function startScan(){ $("scanner").classList.remove("hidden"); try{if(!window.ZXingBrowser)throw new Error("Lector no disponible");reader=new ZXingBrowser.BrowserMultiFormatReader();let ds=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();let d=ds.find(x=>/back|rear|environment|trasera/i.test(x.label))||ds[ds.length-1];scanControls=await reader.decodeFromVideoDevice(d.deviceId,$("video"),async(result)=>{if(result){await useTicket(result.getText());stopScan()}})}catch(e){alert("No se pudo iniciar el escáner. Revisa permisos de cámara.")}}
-async function useTicket(barcode){let {data:t,error}=await db.from("tickets").select("*").eq("barcode",barcode.trim()).single();if(error||!t)return alert("⚠️ BOLETO NO VÁLIDO O NO EMITIDO");if(t.used)return alert("🚫 BOLETO YA UTILIZADO");let {error:u}=await db.from("tickets").update({used:true,used_at:new Date().toISOString()}).eq("id",t.id).eq("used",false);if(u)return alert(u.message);let p=products.find(x=>x.id===t.product_id);if(!p)return alert("Producto no encontrado.");addProduct(p);alert("✅ Boleto válido\n"+t.name+" — "+money(t.price))}
+async function useTicket(barcode){let {data:t,error}=await db.from("tickets").select("*").eq("barcode",barcode.trim()).eq("event_id",activeEvent.id).single();if(error||!t)return alert("⚠️ BOLETO NO VÁLIDO O NO EMITIDO");if(t.used)return alert("🚫 BOLETO YA UTILIZADO");let {error:u}=await db.from("tickets").update({used:true,used_at:new Date().toISOString()}).eq("id",t.id).eq("event_id",activeEvent.id).eq("used",false);if(u)return alert(u.message);let p=products.find(x=>x.id===t.product_id);if(!p)return alert("Producto no encontrado.");addProduct(p);alert("✅ Boleto válido\n"+t.name+" — "+money(t.price))}
 function manualScan(){let c=$("manual").value.trim();if(c){useTicket(c);$("manual").value="";stopScan()}}
 function stopScan(){try{if(scanControls)scanControls.stop()}catch(e){}try{if(reader)reader.reset()}catch(e){}scanControls=null;reader=null;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$("video").srcObject=null;$("scanner").classList.add("hidden")}
 init();
