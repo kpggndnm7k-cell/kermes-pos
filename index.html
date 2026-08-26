@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827"><link rel="manifest" href="manifest.json">
+<title>KERMÉS POS</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#f3f4f6;color:#111827}
+*{box-sizing:border-box}body{margin:0}.app{max-width:760px;margin:auto;min-height:100vh;padding-bottom:90px}
+header{background:#111827;color:#fff;padding:20px 18px;position:sticky;top:0;z-index:5}h1{margin:0;font-size:27px}.sub{font-size:13px;opacity:.7;margin-top:3px}
+main{padding:15px}.card{background:#fff;border-radius:20px;padding:16px;margin-bottom:14px;box-shadow:0 4px 18px #0000000d}
+button{border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700}.primary{background:#111827;color:#fff;width:100%}.green{background:#16a34a;color:#fff;width:100%}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.product{background:#eef2ff;text-align:left;min-height:90px}.product b{display:block;font-size:18px}.product span{display:block;color:#4b5563;margin-top:5px}
+input{width:100%;padding:14px;border:1px solid #d1d5db;border-radius:13px;font-size:17px;margin:6px 0 10px}.row{display:flex;gap:9px}.row>*{flex:1}
+.total{text-align:center;font-size:42px;font-weight:800;margin:10px 0 15px}.change{text-align:center;font-size:34px;font-weight:800;color:#16a34a;margin:8px 0}
+.item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eee}.small{font-size:13px;color:#6b7280}.danger{background:#fee2e2;color:#991b1b}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;display:flex;justify-content:center;gap:5px;padding:9px;z-index:10}nav button{background:#fff;padding:12px}.active{background:#e5e7eb!important}
+.modal{position:fixed;inset:0;background:#0009;z-index:20;display:flex;align-items:flex-end}.sheet{background:#fff;border-radius:24px 24px 0 0;padding:18px;width:100%;max-width:760px;margin:auto}video{width:100%;border-radius:18px;background:#000;max-height:55vh}
+.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#e5e7eb;font-size:12px}.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 2</div></header><main id="screen"></main>
+<nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Productos</button></nav></div>
+
+<div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video>
+<p class="small">Apunta al código de barras. Si el navegador no permite escaneo, usa el código manual.</p>
+<input id="manual" placeholder="Ej. KERMES-TACO"><div class="row"><button class="primary" onclick="manualScan()">Agregar</button><button class="danger" onclick="stopScan()">Cerrar</button></div></div></div>
+
+<script>
+const DEFAULTS={
+"KERMES-TACO":{name:"🌮 Taco",price:25},
+"KERMES-REFRESCO":{name:"🥤 Refresco",price:20},
+"KERMES-PASTEL":{name:"🍰 Pastel",price:30}
+};
+let products=JSON.parse(localStorage.getItem("kposProducts")||"null")||DEFAULTS;
+let cart=[],sales=JSON.parse(localStorage.getItem("kposSales")||"[]");
+let cashIn=Number(localStorage.getItem("kposIn")||0),cashOut=Number(localStorage.getItem("kposOut")||0);
+const $=id=>document.getElementById(id), money=n=>"$"+Number(n).toFixed(2);
+function persist(){localStorage.setItem("kposProducts",JSON.stringify(products));localStorage.setItem("kposSales",JSON.stringify(sales));localStorage.setItem("kposIn",cashIn);localStorage.setItem("kposOut",cashOut)}
+function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
+function show(t){document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));$("n"+(t==="sell"?"Sell":t==="close"?"Close":"Products")).classList.add("active");t==="sell"?renderSell():t==="close"?renderClose():renderProducts()}
+function add(code){code=code.trim().toUpperCase();let p=products[code];if(!p)return alert("Código no registrado: "+code);let x=cart.find(i=>i.code===code);x?x.qty++:cart.push({code,...p,qty:1});renderSell()}
+function renderSell(){
+$("screen").innerHTML=`<div class="card"><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button><p class="small">También puedes tocar un producto para probar.</p>
+<div class="grid">${Object.entries(products).map(([c,p])=>`<button class="product" onclick="add('${c}')"><b>${p.name}</b><span>${money(p.price)}</span></button>`).join("")}</div></div>
+<div class="card"><h3>Venta actual</h3>${cart.length?cart.map(x=>`<div class="item"><span>${x.name} × ${x.qty}</span><b>${money(x.price*x.qty)}</b></div>`).join(""):'<p class="small">Sin productos.</p>'}
+<div class="total">${money(total())}</div><input id="received" type="number" inputmode="decimal" placeholder="Efectivo recibido" oninput="change()"><div id="chg" class="change">$0.00</div>
+<button class="green" onclick="charge()">✓ COBRAR</button><button class="danger" style="width:100%;margin-top:8px" onclick="cart=[];renderSell()">Vaciar</button></div>`}
+function change(){let r=Number($("received")?.value||0);$("chg").textContent=money(Math.max(0,r-total()))}
+function charge(){if(!cart.length)return alert("No hay productos.");let r=Number($("received").value||0),t=total();if(r<t)return alert("El efectivo es menor al total.");sales.push({date:new Date().toISOString(),items:cart,total:t,cash:r,change:r-t});cashIn+=r;persist();alert("Venta registrada\nCambio: "+money(r-t));cart=[];renderSell()}
+function renderClose(){let sold=sales.reduce((s,x)=>s+x.total,0);$("screen").innerHTML=`<div class="card"><h2>📊 Corte de caja</h2>
+<div class="item"><span>Ventas</span><b>${money(sold)}</b></div><div class="item"><span>Entradas de efectivo</span><b>${money(cashIn)}</b></div><div class="item"><span>Salidas</span><b>${money(cashOut)}</b></div><div class="total">${money(cashIn-cashOut)}</div><p class="small">Efectivo esperado.</p></div>
+<div class="card"><h3>Registrar salida</h3><div class="row"><input id="out" type="number" inputmode="decimal" placeholder="$"><button class="danger" onclick="out()">Registrar</button></div><p><span class="badge">${sales.length} ventas</span></p><button class="primary" onclick="csv()">⬇️ Exportar ventas</button></div>`}
+function out(){let n=Number($("out").value||0);if(n<=0)return;cashOut+=n;persist();renderClose()}
+function csv(){let rows=[["Fecha","Total","Efectivo","Cambio","Detalle"]];sales.forEach(s=>rows.push([s.date,s.total,s.cash,s.change,s.items.map(i=>i.name+" x"+i.qty).join(" | ")]));let text=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="kermes_ventas.csv";a.click()}
+function renderProducts(){$("screen").innerHTML=`<div class="card"><h2>🎟️ Productos</h2>${Object.entries(products).map(([c,p])=>`<div class="item"><span>${p.name}<br><small>${c}</small></span><b>${money(p.price)}</b></div>`).join("")}</div>
+<div class="card"><h3>Agregar producto</h3><input id="pn" placeholder="Nombre"><input id="pp" type="number" placeholder="Precio"><input id="pc" placeholder="Código de barras"><button class="primary" onclick="addProduct()">＋ Agregar producto</button><p class="small">El código debe ser exactamente el mismo que tenga tu boleto.</p></div>`}
+function addProduct(){let n=$("pn").value.trim(),p=Number($("pp").value),c=$("pc").value.trim().toUpperCase();if(!n||!p||!c)return alert("Completa los tres campos.");products[c]={name:n,price:p};persist();renderProducts()}
+let stream=null,detector=null,scanning=false;
+async function startScan(){$("scanner").classList.remove("hidden");try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});$("video").srcObject=stream;await $("video").play();if("BarcodeDetector" in window){detector=new BarcodeDetector({formats:["code_128","ean_13","ean_8","upc_a","upc_e","qr_code"]});scanning=true;loop()}else alert("Este navegador no ofrece BarcodeDetector. Usa el campo manual.");}catch(e){alert("No se pudo abrir la cámara. Usa el campo manual.")}}
+async function loop(){if(!scanning)return;try{let c=await detector.detect($("video"));if(c.length){add(c[0].rawValue);stopScan();return}}catch(e){}requestAnimationFrame(loop)}
+function manualScan(){let c=$("manual").value;if(c){add(c);$("manual").value="";stopScan()}}
+function stopScan(){scanning=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$("scanner").classList.add("hidden")}
+show("sell");
+</script></body></html>
