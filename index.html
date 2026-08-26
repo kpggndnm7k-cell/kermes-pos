@@ -21,7 +21,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid 
 </style>
 </head>
 <body>
-<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 3</div></header><main id="screen"></main>
+<div class="app"><header><h1>🎪 KERMÉS POS</h1><div class="sub">Caja rápida • versión 5</div></header><main id="screen"></main>
 <nav><button id="nSell" onclick="show('sell')">🛒 Cobrar</button><button id="nClose" onclick="show('close')">📊 Corte</button><button id="nProducts" onclick="show('products')">🎟️ Productos</button></nav></div>
 
 <div id="scanner" class="modal hidden"><div class="sheet"><h2>📷 Escanear boleto</h2><video id="video" playsinline></video>
@@ -41,7 +41,26 @@ const $=id=>document.getElementById(id), money=n=>"$"+Number(n).toFixed(2);
 function persist(){localStorage.setItem("kposProducts",JSON.stringify(products));localStorage.setItem("kposSales",JSON.stringify(sales));localStorage.setItem("kposIn",cashIn);localStorage.setItem("kposOut",cashOut)}
 function total(){return cart.reduce((s,x)=>s+x.price*x.qty,0)}
 function show(t){document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));$("n"+(t==="sell"?"Sell":t==="close"?"Close":"Products")).classList.add("active");t==="sell"?renderSell():t==="close"?renderClose():renderProducts()}
-function add(code){code=code.trim().toUpperCase();let p=products[code];if(!p)return alert("Código no registrado: "+code);let x=cart.find(i=>i.code===code);x?x.qty++:cart.push({code,...p,qty:1});renderSell()}
+function add(code){
+ code=code.trim().toUpperCase();
+ const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
+ const used=JSON.parse(localStorage.getItem("kposUsed")||"{}");
+ if(code.startsWith("KRM-")){
+   const ticket=issued[code];
+   if(!ticket)return alert("⚠️ Boleto no válido o no emitido.");
+   if(used[code])return alert("🚫 BOLETO YA UTILIZADO\nFolio: "+ticket.folio);
+   const p=products[ticket.productCode];
+   if(!p)return alert("Producto del boleto no existe.");
+   used[code]={usedAt:new Date().toISOString()};
+   localStorage.setItem("kposUsed",JSON.stringify(used));
+   let x=cart.find(i=>i.code===code);
+   x?x.qty++:cart.push({code,name:p.name,price:p.price,qty:1,ticket:true,folio:ticket.folio});
+   renderSell(); return;
+ }
+ let p=products[code];
+ if(!p)return alert("Código no registrado: "+code);
+ let x=cart.find(i=>i.code===code);x?x.qty++:cart.push({code,...p,qty:1});renderSell()
+}
 function renderSell(){
 $("screen").innerHTML=`<div class="card"><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button><p class="small">También puedes tocar un producto para probar.</p>
 <div class="grid">${Object.entries(products).map(([c,p])=>`<button class="product" onclick="add('${c}')"><b>${p.name}</b><span>${money(p.price)}</span></button>`).join("")}</div></div>
@@ -55,9 +74,85 @@ function renderClose(){let sold=sales.reduce((s,x)=>s+x.total,0);$("screen").inn
 <div class="card"><h3>Registrar salida</h3><div class="row"><input id="out" type="number" inputmode="decimal" placeholder="$"><button class="danger" onclick="out()">Registrar</button></div><p><span class="badge">${sales.length} ventas</span></p><button class="primary" onclick="csv()">⬇️ Exportar ventas</button></div>`}
 function out(){let n=Number($("out").value||0);if(n<=0)return;cashOut+=n;persist();renderClose()}
 function csv(){let rows=[["Fecha","Total","Efectivo","Cambio","Detalle"]];sales.forEach(s=>rows.push([s.date,s.total,s.cash,s.change,s.items.map(i=>i.name+" x"+i.qty).join(" | ")]));let text=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="kermes_ventas.csv";a.click()}
-function renderProducts(){$("screen").innerHTML=`<div class="card"><h2>🎟️ Productos</h2>${Object.entries(products).map(([c,p])=>`<div class="item"><span>${p.name}<br><small>${c}</small></span><b>${money(p.price)}</b></div>`).join("")}</div>
-<div class="card"><h3>Agregar producto</h3><input id="pn" placeholder="Nombre"><input id="pp" type="number" placeholder="Precio"><input id="pc" placeholder="Código de barras"><button class="primary" onclick="addProduct()">＋ Agregar producto</button><p class="small">El código debe ser exactamente el mismo que tenga tu boleto.</p></div>`}
-function addProduct(){let n=$("pn").value.trim(),p=Number($("pp").value),c=$("pc").value.trim().toUpperCase();if(!n||!p||!c)return alert("Completa los tres campos.");products[c]={name:n,price:p};persist();renderProducts()}
+function renderProducts(){
+ const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
+ const used=JSON.parse(localStorage.getItem("kposUsed")||"{}");
+ $("screen").innerHTML=`<div class="card"><h2>🎟️ Generador de boletos</h2>
+ <p class="small">Cada boleto tendrá un folio único. El código de barras se asociará al producto.</p>
+ <select id="gp" style="width:100%;padding:14px;border:1px solid #d1d5db;border-radius:13px;font-size:17px;margin:6px 0 10px">
+ ${Object.entries(products).map(([c,p])=>`<option value="${c}">${p.name} — ${money(p.price)}</option>`).join("")}</select>
+ <input id="gqty" type="number" min="1" value="10" placeholder="Cantidad">
+ <button class="primary" onclick="generateTickets()">🎟️ Generar boletos</button>
+ </div>
+ <div class="card"><h3>Resumen de boletos</h3>
+ <div class="item"><span>Emitidos</span><b>${Object.keys(issued).length}</b></div>
+ <div class="item"><span>Utilizados</span><b>${Object.keys(used).length}</b></div>
+ <div class="item"><span>Disponibles</span><b>${Math.max(0,Object.keys(issued).length-Object.keys(used).length)}</b></div>
+ </div>
+ <div class="card"><h3>Productos y códigos</h3>
+ ${Object.entries(products).map(([c,p])=>`<div class="item"><span>${p.name}<br><small>${c}</small></span><b>${money(p.price)}</b></div>`).join("")}
+ </div>`;
+}
+function generateTickets(){
+ const code=String($("gp").value), qty=Math.max(1,Math.floor(Number($("gqty").value||0)));
+ if(!qty)return;
+ const issued=JSON.parse(localStorage.getItem("kposIssued")||"{}");
+ let seq=Number(localStorage.getItem("kposSeq")||0);
+ let created=[];
+ for(let i=0;i<qty;i++){
+   seq++;
+   const folio=String(seq).padStart(6,"0");
+   const barcode=`KRM-${code.replace(/[^A-Z0-9]/gi,"").slice(0,12)}-${folio}`.toUpperCase();
+   issued[barcode]={folio,productCode:code,name:products[code].name,price:products[code].price,createdAt:new Date().toISOString()};
+   created.push(barcode);
+ }
+ localStorage.setItem("kposIssued",JSON.stringify(issued));
+ localStorage.setItem("kposSeq",String(seq));
+ // Create a printable HTML document with Code 128 images generated by the browser library.
+ const w=window.open("","_blank");
+ if(!w){alert("Permite ventanas emergentes para generar los boletos.");return}
+ const details = JSON.stringify(issued);
+ const data = JSON.stringify(created);
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Boletos Kermés</title>
+ <style>
+ body{font-family:Arial,sans-serif;margin:15px}.ticket{display:inline-block;width:45%;margin:1%;padding:15px;border:2px dashed #333;text-align:center;vertical-align:top;page-break-inside:avoid}.ticket h2{margin:0 0 8px}.price{font-size:25px;font-weight:bold}.ticket svg{max-width:100%;height:70px}@media print{button{display:none}.ticket{width:45%}}
+ </style></head><body><button onclick="print()">🖨️ Imprimir</button><div id="tickets"></div>
+ <script>
+ const DATA=${data}, DETAILS=${details};
+ // Code 128B patterns (official symbol patterns, 0-106)
+ const PAT=[
+ "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+ "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+ "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+ "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+ "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+ "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+ "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+ "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+ "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+ "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+ "114131","311141","411131","211412","211214","211232","2331112"
+ ];
+ function enc128B(s){
+   const vals=[104];
+   for(let i=0;i<s.length;i++){let c=s.charCodeAt(i); if(c<32||c>127) throw new Error("Código no compatible"); vals.push(c-32);}
+   let sum=104; for(let i=1;i<vals.length;i++) sum+=vals[i]*i;
+   vals.push(sum%103); vals.push(106); return vals;
+ }
+ function svgBarcode(text){
+   const vals=enc128B(text); let x=8, bars="";
+   for(const v of vals){const p=PAT[v]; for(let i=0;i<p.length;i++){const w=Number(p[i]); if(i%2===0) bars+=\`<rect x="\${x}" y="4" width="\${w}" height="52"/>\`; x+=w;}}
+   return \`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 \${x+8} 62"><rect width="100%" height="100%" fill="white"/>\${bars}</svg>\`;
+ }
+ const box=document.getElementById("tickets");
+ DATA.forEach(c=>{const d=DETAILS[c];const el=document.createElement("div");el.className="ticket";
+ el.innerHTML='<h2>🎪 KERMÉS 2026</h2><div>'+d.name+'</div><div class="price">$'+Number(d.price).toFixed(2)+'</div>'+svgBarcode(c)+'<div>'+c+'</div>';
+ box.appendChild(el);});
+ <\/script></body></html>`);
+ w.document.close();
+ persist(); renderProducts();
+}
+
 let stream=null,scanning=false,zxingReader=null,scanControls=null;
 async function startScan(){
  $("scanner").classList.remove("hidden");
