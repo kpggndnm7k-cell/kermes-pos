@@ -14,6 +14,7 @@
 <title>KERMÉS POS</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.0"></script>
 
 <style>
 
@@ -270,6 +271,54 @@ td{
 
 }
 
+
+.ticket-scanner{
+  margin-top:18px;
+  padding:18px;
+  border:1px solid #e5e7eb;
+  border-radius:20px;
+  background:#f8fafc;
+}
+.ticket-scanner video{
+  width:100%;
+  max-height:360px;
+  object-fit:cover;
+  border-radius:16px;
+  background:#111827;
+  display:block;
+  margin-top:12px;
+}
+.scanner-status{
+  margin-top:12px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:#e2e8f0;
+  color:#334155;
+  font-weight:700;
+}
+.scanner-valid{
+  background:#dcfce7;
+  color:#166534;
+}
+.scanner-invalid{
+  background:#fee2e2;
+  color:#991b1b;
+}
+.scanner-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+.scanner-actions .primary,
+.scanner-actions .secondary{
+  margin-top:0;
+  width:100%;
+}
+@media(max-width:700px){
+  .scanner-actions{grid-template-columns:1fr;}
+}
+
 </style>
 
 </head>
@@ -360,6 +409,10 @@ let events = [];
 let activeEvent = null;
 
 let currentView = "sell";
+
+// Lector de boletos: se mantiene separado del flujo actual de ventas.
+let ticketScanner = null;
+let scannedTicket = null;
 
 
 /* =====================================================
@@ -640,6 +693,9 @@ async function loadAll(){
 
 function show(view){
 
+  stopTicketScanner();
+  scannedTicket = null;
+
   currentView = view;
 
   document
@@ -739,6 +795,78 @@ function renderSell(){
       <h3>
         ${escapeHtml(activeEvent.name)}
       </h3>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>📷 Lector de boletos</h2>
+
+      <div class="small">
+        Escanea el código de barras del boleto con la cámara del iPhone.
+      </div>
+
+      <div class="ticket-scanner">
+
+        <button
+          id="startScannerButton"
+          class="primary"
+          onclick="startTicketScanner()"
+        >
+          📷 Escanear boleto
+        </button>
+
+        <video
+          id="ticketScannerVideo"
+          playsinline
+          muted
+          autoplay
+          style="display:none"
+        ></video>
+
+        <div
+          id="ticketScannerStatus"
+          class="scanner-status"
+        >
+          Listo para escanear.
+        </div>
+
+        <div id="scannedTicketResult"></div>
+
+        <div class="scanner-actions">
+
+          <button
+            id="stopScannerButton"
+            class="secondary"
+            onclick="stopTicketScanner()"
+            style="display:none"
+          >
+            ⏹️ Detener cámara
+          </button>
+
+        </div>
+
+        <label>
+          O escribe el código manualmente
+        </label>
+
+        <input
+          id="manualTicketBarcode"
+          type="text"
+          autocomplete="off"
+          placeholder="KRM-..."
+        >
+
+        <button
+          class="secondary"
+          style="margin-top:10px;width:100%"
+          onclick="validateManualTicket()"
+        >
+          🔎 Validar código
+        </button>
+
+      </div>
 
     </div>
 
@@ -886,6 +1014,301 @@ function renderSell(){
 
   `;
 
+}
+
+
+/* =====================================================
+   LECTOR DE BOLETOS
+   ===================================================== */
+
+function setScannerStatus(message, type = ""){
+
+  const status = document.getElementById("ticketScannerStatus");
+
+  if(!status) return;
+
+  status.className = "scanner-status" + (type ? " " + type : "");
+  status.textContent = message;
+}
+
+
+function renderScannedTicket(ticket){
+
+  const box = document.getElementById("scannedTicketResult");
+
+  if(!box) return;
+
+  if(!ticket){
+    box.innerHTML = "";
+    return;
+  }
+
+  if(ticket.used){
+
+    box.innerHTML = `
+      <div class="error" style="margin-top:12px">
+        🔴 Este boleto ya fue utilizado.
+        <br>
+        <span class="small">Código: ${escapeHtml(ticket.barcode)}</span>
+      </div>
+    `;
+
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="card" style="margin:12px 0 0;padding:18px;background:#f0fdf4">
+      <h3 style="margin-top:0">🟢 Boleto válido</h3>
+      <div><strong>Producto:</strong> ${escapeHtml(ticket.name)}</div>
+      <div><strong>Importe:</strong> ${money(ticket.amount ?? ticket.price)}</div>
+      <div class="small" style="margin-top:6px">Código: ${escapeHtml(ticket.barcode)}</div>
+
+      <button
+        class="primary"
+        onclick="redeemScannedTicket()"
+      >
+        ✅ Canjear boleto
+      </button>
+    </div>
+  `;
+}
+
+
+async function validateTicketBarcode(barcode){
+
+  const cleanBarcode = String(barcode || "").trim();
+
+  if(!cleanBarcode){
+    setScannerStatus("Escribe o escanea un código de barras.", "scanner-invalid");
+    return;
+  }
+
+  if(!db){
+    setScannerStatus("Supabase no está conectado.", "scanner-invalid");
+    return;
+  }
+
+  if(!activeEvent){
+    setScannerStatus("No hay un evento activo.", "scanner-invalid");
+    return;
+  }
+
+  setScannerStatus("🔎 Buscando boleto...", "");
+  scannedTicket = null;
+  renderScannedTicket(null);
+
+  const result = await db
+    .from("tickets")
+    .select("*")
+    .eq("event_id", activeEvent.id)
+    .eq("barcode", cleanBarcode)
+    .maybeSingle();
+
+  if(result.error){
+    console.error("Error validando boleto:", result.error);
+    setScannerStatus("❌ No se pudo consultar el boleto.", "scanner-invalid");
+    return;
+  }
+
+  if(!result.data){
+    setScannerStatus("❌ Boleto no encontrado para este evento.", "scanner-invalid");
+    return;
+  }
+
+  scannedTicket = result.data;
+
+  if(scannedTicket.used){
+    setScannerStatus("🔴 Boleto ya utilizado.", "scanner-invalid");
+  }else{
+    setScannerStatus("🟢 Boleto válido.", "scanner-valid");
+  }
+
+  renderScannedTicket(scannedTicket);
+}
+
+
+async function validateManualTicket(){
+
+  const input = document.getElementById("manualTicketBarcode");
+
+  await validateTicketBarcode(input?.value || "");
+}
+
+
+async function startTicketScanner(){
+
+  try{
+
+    if(!activeEvent){
+      alert("❌ No hay evento activo.");
+      return;
+    }
+
+    if(!db){
+      alert("❌ Supabase no está conectado.");
+      return;
+    }
+
+    if(typeof ZXingBrowser === "undefined" || !ZXingBrowser.BrowserMultiFormatReader){
+      alert("❌ No se pudo cargar el lector de códigos de barras. Recarga la página e inténtalo nuevamente.");
+      return;
+    }
+
+    const video = document.getElementById("ticketScannerVideo");
+    const startButton = document.getElementById("startScannerButton");
+    const stopButton = document.getElementById("stopScannerButton");
+
+    if(!video) return;
+
+    stopTicketScanner();
+
+    video.style.display = "block";
+
+    if(startButton) startButton.style.display = "none";
+    if(stopButton) stopButton.style.display = "block";
+
+    setScannerStatus("📷 Abriendo cámara...", "");
+
+    ticketScanner = new ZXingBrowser.BrowserMultiFormatReader();
+
+    ticketScanner = await ticketScanner.decodeFromVideoDevice(
+      undefined,
+      video,
+      async (result, error) => {
+
+        if(!result) return;
+
+        const barcode = result.getText();
+
+        stopTicketScanner();
+
+        setScannerStatus("🔎 Código leído: " + barcode, "");
+
+        await validateTicketBarcode(barcode);
+
+      }
+    );
+
+    setScannerStatus("📷 Apunta la cámara al código de barras.", "");
+
+  }catch(error){
+
+    console.error("Error iniciando lector:", error);
+
+    stopTicketScanner();
+
+    let message = "❌ No se pudo abrir la cámara.";
+
+    if(error?.name === "NotAllowedError"){
+      message += " Revisa que Safari tenga permiso para usar la cámara.";
+    }else if(error?.name === "NotFoundError"){
+      message += " No se encontró una cámara disponible.";
+    }
+
+    setScannerStatus(message, "scanner-invalid");
+
+  }
+}
+
+
+function stopTicketScanner(){
+
+  try{
+    if(ticketScanner && typeof ticketScanner.stop === "function"){
+      ticketScanner.stop();
+    }
+  }catch(error){
+    console.warn("No se pudo detener ZXing:", error);
+  }
+
+  ticketScanner = null;
+
+  const video = document.getElementById("ticketScannerVideo");
+  const startButton = document.getElementById("startScannerButton");
+  const stopButton = document.getElementById("stopScannerButton");
+
+  if(video){
+    try{
+      const stream = video.srcObject;
+      if(stream && stream.getTracks){
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }catch(error){
+      console.warn("No se pudo detener la cámara:", error);
+    }
+
+    video.srcObject = null;
+    video.style.display = "none";
+  }
+
+  if(startButton) startButton.style.display = "block";
+  if(stopButton) stopButton.style.display = "none";
+}
+
+
+async function redeemScannedTicket(){
+
+  if(!scannedTicket){
+    alert("❌ Primero escanea un boleto válido.");
+    return;
+  }
+
+  if(scannedTicket.used){
+    alert("🔴 Este boleto ya fue utilizado.");
+    return;
+  }
+
+  if(!db){
+    alert("❌ Supabase no está conectado.");
+    return;
+  }
+
+  const confirmed = confirm(
+    "¿Canjear este boleto?\n\n" +
+    scannedTicket.name + "\n" +
+    money(scannedTicket.amount ?? scannedTicket.price)
+  );
+
+  if(!confirmed) return;
+
+  const result = await db
+    .from("tickets")
+    .update({
+      used:true,
+      used_at:new Date().toISOString()
+    })
+    .eq("event_id", activeEvent.id)
+    .eq("barcode", scannedTicket.barcode)
+    .eq("used", false)
+    .select()
+    .maybeSingle();
+
+  if(result.error){
+    console.error("Error canjeando boleto:", result.error);
+    alert("❌ No se pudo canjear el boleto:\n\n" + result.error.message);
+    return;
+  }
+
+  if(!result.data){
+    alert("🔴 El boleto ya fue utilizado o ya no está disponible.");
+    scannedTicket = null;
+    renderScannedTicket(null);
+    setScannerStatus("Boleto no disponible.", "scanner-invalid");
+    return;
+  }
+
+  scannedTicket = result.data;
+
+  alert(
+    "✅ Boleto canjeado\n\n" +
+    scannedTicket.name + "\n" +
+    money(scannedTicket.amount ?? scannedTicket.price)
+  );
+
+  setScannerStatus("✅ Boleto canjeado correctamente.", "scanner-valid");
+  renderScannedTicket(scannedTicket);
+
+  await loadTickets();
 }
 
 
@@ -2157,7 +2580,11 @@ async function newEvent(){
 async function init(){
 
   const connected =
-    initSupabase();
+    window.addEventListener("beforeunload", () => {
+  stopTicketScanner();
+});
+
+initSupabase();
 
 
   if(!connected){
