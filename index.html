@@ -4,7 +4,2075 @@
 
 <meta charset="utf-8">
 
+<meta<!doctype html>
+<html lang="es">
+<head>
+
+<meta charset="utf-8">
+
 <meta
+  name="viewport"
+  content="width=device-width,initial-scale=1,viewport-fit=cover"
+>
+
+<meta name="theme-color" content="#0f172a">
+
+<title>KERMÉS POS</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  background:#f3f4f6;
+  color:#111827;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+.app{
+  max-width:1100px;
+  margin:auto;
+  min-height:100vh;
+  padding-bottom:80px;
+}
+
+header{
+  background:#0f172a;
+  color:white;
+  padding:28px;
+  border-radius:0 0 28px 28px;
+}
+
+header h1{
+  margin:0;
+  font-size:34px;
+}
+
+.sub{
+  margin-top:6px;
+  color:#cbd5e1;
+  font-size:18px;
+}
+
+nav{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+  padding:18px 0;
+}
+
+button{
+  border:0;
+  cursor:pointer;
+  font:inherit;
+}
+
+.nav-btn{
+  padding:18px;
+  border-radius:18px;
+  background:white;
+  color:#111827;
+  font-weight:700;
+  font-size:18px;
+  box-shadow:0 4px 15px rgba(0,0,0,.07);
+}
+
+.nav-btn.active{
+  background:#0f172a;
+  color:white;
+}
+
+.card{
+  background:white;
+  border-radius:25px;
+  padding:28px;
+  margin-bottom:20px;
+  box-shadow:0 5px 25px rgba(15,23,42,.06);
+}
+
+.card h2{
+  margin-top:0;
+  font-size:30px;
+}
+
+.product-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:16px;
+}
+
+.product{
+  background:#eef2ff;
+  padding:25px;
+  border-radius:22px;
+  text-align:left;
+  min-height:120px;
+  transition:.15s;
+}
+
+.product:hover{
+  transform:translateY(-2px);
+}
+
+.product-name{
+  font-size:24px;
+  font-weight:800;
+}
+
+.product-price{
+  margin-top:5px;
+  font-size:23px;
+  font-weight:700;
+  color:#64748b;
+}
+
+.cart-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:15px 0;
+  border-bottom:1px solid #e5e7eb;
+}
+
+.cart-name{
+  font-weight:700;
+  font-size:18px;
+}
+
+.total{
+  display:flex;
+  justify-content:space-between;
+  font-size:32px;
+  font-weight:900;
+  padding-top:20px;
+}
+
+input,
+select{
+  width:100%;
+  padding:17px;
+  border:1px solid #cbd5e1;
+  border-radius:16px;
+  font-size:18px;
+  background:white;
+}
+
+label{
+  display:block;
+  margin:15px 0 7px;
+  font-weight:700;
+}
+
+.primary{
+  width:100%;
+  padding:18px;
+  border-radius:17px;
+  background:#0f172a;
+  color:white;
+  font-size:19px;
+  font-weight:800;
+  margin-top:15px;
+}
+
+.danger{
+  width:100%;
+  padding:16px;
+  border-radius:17px;
+  background:#fee2e2;
+  color:#991b1b;
+  font-weight:800;
+  margin-top:10px;
+}
+
+.secondary{
+  padding:14px 18px;
+  border-radius:14px;
+  background:#e2e8f0;
+  font-weight:700;
+}
+
+.money{
+  font-size:38px;
+  font-weight:900;
+  text-align:right;
+}
+
+.row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:15px;
+}
+
+.stat{
+  padding:18px 0;
+  border-bottom:1px solid #e5e7eb;
+  display:flex;
+  justify-content:space-between;
+  font-size:20px;
+}
+
+.status{
+  display:inline-block;
+  padding:10px 15px;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#166534;
+  font-weight:800;
+}
+
+.error{
+  background:#fee2e2;
+  color:#991b1b;
+  padding:16px;
+  border-radius:15px;
+  margin-bottom:15px;
+  font-weight:700;
+}
+
+.empty{
+  color:#64748b;
+  padding:20px 0;
+}
+
+.small{
+  color:#64748b;
+  font-size:15px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+th,
+td{
+  padding:12px;
+  text-align:left;
+  border-bottom:1px solid #e5e7eb;
+}
+
+@media(max-width:700px){
+
+  nav{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .product-grid{
+    grid-template-columns:1fr;
+  }
+
+  .row{
+    grid-template-columns:1fr;
+  }
+
+  header h1{
+    font-size:28px;
+  }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+<header>
+
+<h1>🎪 KERMÉS POS</h1>
+
+<div class="sub">
+Caja rápida · versión estable
+</div>
+
+</header>
+
+<nav>
+
+<button
+  id="navSell"
+  class="nav-btn active"
+  onclick="show('sell')"
+>
+🛒 Cobrar
+</button>
+
+<button
+  id="navClose"
+  class="nav-btn"
+  onclick="show('close')"
+>
+📊 Corte
+</button>
+
+<button
+  id="navTickets"
+  class="nav-btn"
+  onclick="show('tickets')"
+>
+🎟️ Boletos
+</button>
+
+<button
+  id="navAdmin"
+  class="nav-btn"
+  onclick="show('admin')"
+>
+⚙️ Admin
+</button>
+
+</nav>
+
+<main id="screen"></main>
+
+</div>
+
+<script>
+
+/* =====================================================
+   CONFIGURACIÓN SUPABASE
+   ===================================================== */
+
+const SUPABASE_URL = "https://lvcgbghgpzmehwxzhqcr.supabase.co";
+
+const SUPABASE_ANON_KEY = "sb_publishable_-E-GZccnts6CiwuQWivJ2A_XNISGlbT";
+
+
+/* =====================================================
+   VARIABLES
+   ===================================================== */
+
+let db = null;
+
+let products = [];
+
+let cart = [];
+
+let sales = [];
+
+let cashMovements = [];
+
+let tickets = [];
+
+let events = [];
+
+let activeEvent = null;
+
+let currentView = "sell";
+
+
+/* =====================================================
+   INICIALIZAR SUPABASE
+   ===================================================== */
+
+function initSupabase(){
+
+  try{
+
+    if(
+      !SUPABASE_URL ||
+      SUPABASE_URL.includes("PEGA_AQUI") ||
+      !SUPABASE_ANON_KEY ||
+      SUPABASE_ANON_KEY.includes("PEGA_AQUI")
+    ){
+
+      throw new Error(
+        "Faltan las credenciales de Supabase."
+      );
+
+    }
+
+    if(
+      typeof window.supabase === "undefined" ||
+      typeof window.supabase.createClient !== "function"
+    ){
+
+      throw new Error(
+        "No se pudo cargar la librería de Supabase."
+      );
+
+    }
+
+    db = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+
+    return true;
+
+  }catch(error){
+
+    console.error(error);
+
+    db = null;
+
+    return false;
+
+  }
+
+}
+
+
+/* =====================================================
+   UTILIDADES
+   ===================================================== */
+
+function money(value){
+
+  return Number(value || 0).toLocaleString(
+    "es-MX",
+    {
+      style:"currency",
+      currency:"MXN"
+    }
+  );
+
+}
+
+
+function escapeHtml(value){
+
+  return String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+
+}
+
+
+function errorMessage(message){
+
+  return `
+    <div class="error">
+      ⚠️ ${escapeHtml(message)}
+    </div>
+  `;
+
+}
+
+
+/* =====================================================
+   EVENTO
+   ===================================================== */
+
+async function loadEvents(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  const result = await db
+    .from("events")
+    .select("*")
+    .order("id",{ascending:false});
+
+  if(result.error){
+
+    console.error(result.error);
+
+    throw result.error;
+
+  }
+
+  events = result.data || [];
+
+  activeEvent =
+    events.find(e => e.active === true) ||
+    events[0] ||
+    null;
+
+}
+
+
+/* =====================================================
+   PRODUCTOS
+   ===================================================== */
+
+async function loadProducts(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  const result = await db
+    .from("products")
+    .select("*")
+    .eq("active",true)
+    .order("id");
+
+  if(result.error){
+
+    throw result.error;
+
+  }
+
+  products = result.data || [];
+
+}
+
+
+/* =====================================================
+   VENTAS
+   ===================================================== */
+
+async function loadSales(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  const result = await db
+    .from("sales")
+    .select("*")
+    .order("created_at",{ascending:false})
+    .limit(500);
+
+  if(result.error){
+
+    throw result.error;
+
+  }
+
+  sales = result.data || [];
+
+}
+
+
+/* =====================================================
+   MOVIMIENTOS DE CAJA
+   ===================================================== */
+
+async function loadCashMovements(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  const result = await db
+    .from("cash_movements")
+    .select("*")
+    .order("created_at",{ascending:false})
+    .limit(500);
+
+  if(result.error){
+
+    throw result.error;
+
+  }
+
+  cashMovements = result.data || [];
+
+}
+
+
+/* =====================================================
+   BOLETOS
+   ===================================================== */
+
+async function loadTickets(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  const result = await db
+    .from("tickets")
+    .select("*")
+    .order("created_at",{ascending:false})
+    .limit(500);
+
+  if(result.error){
+
+    console.error("No se pudieron cargar boletos:", result.error);
+
+    tickets = [];
+
+    return;
+
+  }
+
+  tickets = result.data || [];
+
+}
+
+
+/* =====================================================
+   CARGA GENERAL
+   ===================================================== */
+
+async function loadAll(){
+
+  if(!db){
+
+    return;
+
+  }
+
+  await loadEvents();
+
+  await loadProducts();
+
+  await loadSales();
+
+  await loadCashMovements();
+
+  await loadTickets();
+
+}
+
+
+/* =====================================================
+   NAVEGACIÓN
+   ===================================================== */
+
+function show(view){
+
+  currentView = view;
+
+  document
+    .querySelectorAll(".nav-btn")
+    .forEach(btn => btn.classList.remove("active"));
+
+  if(view === "sell"){
+
+    document
+      .getElementById("navSell")
+      .classList.add("active");
+
+    renderSell();
+
+  }
+
+  if(view === "close"){
+
+    document
+      .getElementById("navClose")
+      .classList.add("active");
+
+    renderClose();
+
+  }
+
+  if(view === "tickets"){
+
+    document
+      .getElementById("navTickets")
+      .classList.add("active");
+
+    renderTickets();
+
+  }
+
+  if(view === "admin"){
+
+    document
+      .getElementById("navAdmin")
+      .classList.add("active");
+
+    renderAdmin();
+
+  }
+
+}
+
+
+/* =====================================================
+   COBRAR
+   ===================================================== */
+
+function renderSell(){
+
+  const screen =
+    document.getElementById("screen");
+
+  if(!activeEvent){
+
+    screen.innerHTML = `
+
+      <div class="card">
+
+        <h2>🛒 Nueva venta</h2>
+
+        <div class="empty">
+          No hay un evento activo.
+        </div>
+
+        <button
+          class="primary"
+          onclick="show('admin')"
+        >
+          ⚙️ Crear evento
+        </button>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  screen.innerHTML = `
+
+    <div class="card">
+
+      <h2>🛒 Nueva venta</h2>
+
+      <div class="small">
+        Evento activo
+      </div>
+
+      <h3>
+        ${escapeHtml(activeEvent.name)}
+      </h3>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>Productos</h2>
+
+      <div class="product-grid">
+
+        ${
+          products.length
+          ?
+          products.map(product => `
+
+            <button
+              class="product"
+              onclick="addToCart(${product.id})"
+            >
+
+              <div class="product-name">
+                ${escapeHtml(product.name)}
+              </div>
+
+              <div class="product-price">
+                ${money(product.price)}
+              </div>
+
+            </button>
+
+          `).join("")
+          :
+          `
+            <div class="empty">
+              No hay productos activos.
+            </div>
+          `
+        }
+
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>Carrito</h2>
+
+      ${
+        cart.length
+        ?
+        cart.map(item => `
+
+          <div class="cart-item">
+
+            <div>
+
+              <div class="cart-name">
+                ${escapeHtml(item.name)}
+                × ${item.quantity}
+              </div>
+
+              <div class="small">
+                ${money(item.price)} c/u
+              </div>
+
+            </div>
+
+            <strong>
+              ${money(item.price * item.quantity)}
+            </strong>
+
+          </div>
+
+        `).join("")
+        :
+        `
+          <div class="empty">
+            Agrega productos.
+          </div>
+        `
+      }
+
+      <div class="total">
+
+        <span>Total</span>
+
+        <span>
+          ${money(cartTotal())}
+        </span>
+
+      </div>
+
+      ${
+        cart.length
+        ?
+        `
+
+          <label>
+            💵 Efectivo recibido
+          </label>
+
+          <input
+            id="cashReceived"
+            type="number"
+            min="0"
+            step="0.01"
+            value=""
+            oninput="updateChange()"
+            placeholder="0.00"
+          >
+
+          <div class="stat">
+
+            <span>
+              Cambio
+            </span>
+
+            <strong id="changeValue">
+              ${money(0)}
+            </strong>
+
+          </div>
+
+          <button
+            class="primary"
+            onclick="confirmSale()"
+          >
+            ✅ CONFIRMAR VENTA
+          </button>
+
+          <button
+            class="danger"
+            onclick="clearCart()"
+          >
+            🗑️ Vaciar carrito
+          </button>
+
+        `
+        :
+        ""
+      }
+
+    </div>
+
+  `;
+
+}
+
+
+/* =====================================================
+   CARRITO
+   ===================================================== */
+
+function addToCart(productId){
+
+  const product =
+    products.find(
+      p => Number(p.id) === Number(productId)
+    );
+
+  if(!product){
+
+    alert("Producto no encontrado.");
+
+    return;
+
+  }
+
+  const existing =
+    cart.find(
+      item => Number(item.id) === Number(productId)
+    );
+
+  if(existing){
+
+    existing.quantity++;
+
+  }else{
+
+    cart.push({
+
+      id:product.id,
+
+      name:product.name,
+
+      price:Number(product.price),
+
+      quantity:1
+
+    });
+
+  }
+
+  renderSell();
+
+}
+
+
+function cartTotal(){
+
+  return cart.reduce(
+    (sum,item) =>
+      sum + (
+        Number(item.price) *
+        Number(item.quantity)
+      ),
+    0
+  );
+
+}
+
+
+function clearCart(){
+
+  cart = [];
+
+  renderSell();
+
+}
+
+
+function updateChange(){
+
+  const input =
+    document.getElementById("cashReceived");
+
+  const output =
+    document.getElementById("changeValue");
+
+  if(!input || !output){
+
+    return;
+
+  }
+
+  const received =
+    Number(input.value || 0);
+
+  const total =
+    cartTotal();
+
+  const change =
+    Math.max(0,received-total);
+
+  output.textContent =
+    money(change);
+
+}
+
+
+/* =====================================================
+   CONFIRMAR VENTA
+   ===================================================== */
+
+async function confirmSale(){
+
+  if(!db){
+
+    alert("Supabase no está conectado.");
+
+    return;
+
+  }
+
+  if(!activeEvent){
+
+    alert("No hay evento activo.");
+
+    return;
+
+  }
+
+  if(!cart.length){
+
+    alert("El carrito está vacío.");
+
+    return;
+
+  }
+
+
+  const total =
+    cartTotal();
+
+  const cashInput =
+    document.getElementById("cashReceived");
+
+  const cashReceived =
+    Number(cashInput?.value || 0);
+
+  if(cashReceived < total){
+
+    alert(
+      `Faltan ${money(total-cashReceived)}`
+    );
+
+    return;
+
+  }
+
+  const change =
+    cashReceived-total;
+
+
+  /* ==========================================
+     1. CREAR VENTA
+     ========================================== */
+
+  const saleResult =
+    await db
+      .from("sales")
+      .insert({
+
+        event_id:activeEvent.id,
+
+        total:total,
+
+        cash_received:cashReceived,
+
+        change_given:change,
+
+        items:cart.map(item => ({
+          product_id:item.id,
+          product_name:item.name,
+          price:item.price,
+          quantity:item.quantity,
+          subtotal:item.price * item.quantity
+        }))
+
+      })
+      .select()
+      .single();
+
+
+  if(saleResult.error){
+
+    alert(saleResult.error.message);
+
+    console.error(saleResult.error);
+
+    return;
+
+  }
+
+
+  const sale =
+    saleResult.data;
+
+
+  /* ==========================================
+     2. DETALLE DE VENTA
+     ========================================== */
+
+  const items =
+    cart.map(item => ({
+
+      sale_id:sale.id,
+
+      product_id:item.id,
+
+      product_name:item.name,
+
+      price:item.price,
+
+      quantity:item.quantity,
+
+      subtotal:
+        item.price *
+        item.quantity
+
+    }));
+
+
+  const itemResult =
+    await db
+      .from("sale_items")
+      .insert(items);
+
+
+  if(itemResult.error){
+
+    alert(itemResult.error.message);
+
+    console.error(itemResult.error);
+
+    return;
+
+  }
+
+
+  /* ==========================================
+     3. REGISTRAR ENTRADA DE EFECTIVO
+     ========================================== */
+
+  const movementResult =
+    await db
+      .from("cash_movements")
+      .insert({
+
+        event_id:activeEvent.id,
+
+        type:"in",
+
+        amount:cashReceived,
+
+        detail:`Venta #${sale.id}`
+
+      });
+
+
+  if(movementResult.error){
+
+    alert(
+      "La venta se registró, pero hubo un problema con caja:\n\n" +
+      movementResult.error.message
+    );
+
+    console.error(movementResult.error);
+
+    return;
+
+  }
+
+
+  alert(
+    `✅ Venta registrada\n\n` +
+    `Total: ${money(total)}\n` +
+    `Efectivo: ${money(cashReceived)}\n` +
+    `Cambio: ${money(change)}`
+  );
+
+
+  cart = [];
+
+
+  await loadAll();
+
+  renderSell();
+
+}
+
+
+/* =====================================================
+   CORTE DE CAJA
+   ===================================================== */
+
+async function renderClose(){
+
+  const screen =
+    document.getElementById("screen");
+
+
+  try{
+
+    await loadSales();
+
+    await loadCashMovements();
+
+  }catch(error){
+
+    screen.innerHTML =
+      errorMessage(error.message);
+
+    return;
+
+  }
+
+
+  const eventSales =
+    activeEvent
+    ?
+    sales.filter(
+      s =>
+        Number(s.event_id) ===
+        Number(activeEvent.id)
+    )
+    :
+    [];
+
+
+  const eventMovements =
+    activeEvent
+    ?
+    cashMovements.filter(
+      m =>
+        Number(m.event_id) ===
+        Number(activeEvent.id)
+    )
+    :
+    [];
+
+
+  const totalSales =
+    eventSales.reduce(
+      (sum,s) =>
+        sum + Number(s.total || 0),
+      0
+    );
+
+
+  const entries =
+    eventMovements
+      .filter(m => m.type === "in")
+      .reduce(
+        (sum,m) =>
+          sum + Number(m.amount || 0),
+        0
+      );
+
+
+  const exits =
+    eventMovements
+      .filter(m => m.type === "out")
+      .reduce(
+        (sum,m) =>
+          sum + Number(m.amount || 0),
+        0
+      );
+
+
+  const net =
+    totalSales +
+    entries -
+    exits;
+
+
+  screen.innerHTML = `
+
+    <div class="card">
+
+      <h2>📊 Corte de caja</h2>
+
+      ${
+        activeEvent
+        ?
+        `<div class="small">
+          ${escapeHtml(activeEvent.name)}
+        </div>`
+        :
+        `<div class="empty">
+          Sin evento activo
+        </div>`
+      }
+
+      <div class="stat">
+
+        <span>
+          Ventas
+        </span>
+
+        <strong>
+          ${money(totalSales)}
+        </strong>
+
+      </div>
+
+      <div class="stat">
+
+        <span>
+          Entradas
+        </span>
+
+        <strong>
+          ${money(entries)}
+        </strong>
+
+      </div>
+
+      <div class="stat">
+
+        <span>
+          Salidas
+        </span>
+
+        <strong>
+          ${money(exits)}
+        </strong>
+
+      </div>
+
+      <div class="stat">
+
+        <span>
+          Efectivo neto
+        </span>
+
+        <strong>
+          ${money(net)}
+        </strong>
+
+      </div>
+
+      <div class="money">
+        ${money(net)}
+      </div>
+
+      <p class="small">
+        ${eventSales.length} ventas registradas
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>💵 Movimiento de caja</h2>
+
+      <div class="row">
+
+        <div>
+
+          <label>
+            Importe
+          </label>
+
+          <input
+            id="movementAmount"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+          >
+
+        </div>
+
+        <div>
+
+          <label>
+            Tipo
+          </label>
+
+          <select id="movementType">
+
+            <option value="in">
+              Entrada
+            </option>
+
+            <option value="out">
+              Salida
+            </option>
+
+          </select>
+
+        </div>
+
+      </div>
+
+      <label>
+        Descripción
+      </label>
+
+      <input
+        id="movementDescription"
+        type="text"
+        placeholder="Ej. Compra de hielo"
+      >
+
+      <button
+        class="primary"
+        onclick="registerMovement()"
+      >
+        Registrar movimiento
+      </button>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>📋 Movimientos</h2>
+
+      ${
+        eventMovements.length
+        ?
+        eventMovements.map(m => `
+
+          <div class="cart-item">
+
+            <div>
+
+              <strong>
+                ${
+                  m.type === "in"
+                  ? "🟢 Entrada"
+                  : "🔴 Salida"
+                }
+              </strong>
+
+              <div class="small">
+                ${escapeHtml(m.detail || "")}
+              </div>
+
+            </div>
+
+            <strong>
+              ${money(m.amount)}
+            </strong>
+
+          </div>
+
+        `).join("")
+        :
+        `
+          <div class="empty">
+            No hay movimientos.
+          </div>
+        `
+      }
+
+    </div>
+
+  `;
+
+}
+
+
+/* =====================================================
+   REGISTRAR MOVIMIENTO
+   ===================================================== */
+
+async function registerMovement(){
+
+  if(!db){
+
+    alert("Supabase no está conectado.");
+
+    return;
+
+  }
+
+  if(!activeEvent){
+
+    alert("No hay evento activo.");
+
+    return;
+
+  }
+
+
+  const amount =
+    Number(
+      document.getElementById(
+        "movementAmount"
+      ).value || 0
+    );
+
+
+  const type =
+    document.getElementById(
+      "movementType"
+    ).value;
+
+
+  const description =
+    document.getElementById(
+      "movementDescription"
+    ).value.trim();
+
+
+  if(amount <= 0){
+
+    alert("Ingresa un importe válido.");
+
+    return;
+
+  }
+
+
+  /*
+   * MUY IMPORTANTE:
+   *
+   * type SOLO puede ser:
+   *
+   * "in"
+   * "out"
+   *
+   * Nunca "Entrada"
+   * Nunca "Salida"
+   */
+
+  const safeType =
+    type === "out"
+    ? "out"
+    : "in";
+
+
+  const result =
+    await db
+      .from("cash_movements")
+      .insert({
+
+        event_id:activeEvent.id,
+
+        type:safeType,
+
+        amount:amount,
+
+        detail:
+          description || "Movimiento de caja"
+
+      });
+
+
+  if(result.error){
+
+    alert(result.error.message);
+
+    console.error(result.error);
+
+    return;
+
+  }
+
+
+  alert("✅ Movimiento registrado.");
+
+
+  await loadCashMovements();
+
+  renderClose();
+
+}
+
+
+/* =====================================================
+   BOLETOS
+   ===================================================== */
+
+async function renderTickets(){
+
+  const screen = document.getElementById("screen");
+
+  try{
+    await loadTickets();
+  }catch(error){
+    screen.innerHTML = errorMessage(error.message);
+    return;
+  }
+
+  const eventTickets = activeEvent
+    ? tickets.filter(t => Number(t.event_id) === Number(activeEvent.id))
+    : [];
+
+  screen.innerHTML = `
+
+    <div class="card">
+
+      <h2>🎟️ Boletos</h2>
+
+      ${
+        activeEvent
+        ? `
+          <div class="small">
+            Evento: ${escapeHtml(activeEvent.name)}
+          </div>
+
+          <label>Producto</label>
+
+          <select id="ticketProduct">
+            ${
+              products.length
+              ? products.map(p => `
+                  <option value="${p.id}">
+                    ${escapeHtml(p.name)} — ${money(p.price)}
+                  </option>
+                `).join("")
+              : `<option value="">No hay productos activos</option>`
+            }
+          </select>
+
+          <button
+            class="primary"
+            onclick="createTicket()"
+          >
+            🎟️ Generar boleto
+          </button>
+        `
+        : `
+          <div class="empty">
+            No hay evento activo.
+          </div>
+        `
+      }
+
+    </div>
+
+    <div class="card">
+
+      <h2>Boletos generados</h2>
+
+      ${
+        eventTickets.length
+        ? `
+          <table>
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Código de barras</th>
+                <th>Importe</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                eventTickets.map(t => `
+                  <tr>
+                    <td>${escapeHtml(t.name)}</td>
+                    <td>${escapeHtml(t.barcode)}</td>
+                    <td>${money(t.amount)}</td>
+                    <td>${t.used ? "🔴 Usado" : "🟢 Disponible"}</td>
+                  </tr>
+                `).join("")
+              }
+            </tbody>
+          </table>
+        `
+        : `
+          <div class="empty">
+            No hay boletos.
+          </div>
+        `
+      }
+
+    </div>
+  `;
+}
+
+
+async function createTicket(){
+
+  try{
+
+    if(!db){
+      alert("❌ Supabase no está conectado.");
+      return;
+    }
+
+    if(!activeEvent){
+      alert("❌ No hay evento activo.");
+      return;
+    }
+
+    const select = document.getElementById("ticketProduct");
+
+    if(!select || !select.value){
+      alert("❌ Selecciona un producto.");
+      return;
+    }
+
+    const product = products.find(
+      p => String(p.id) === String(select.value)
+    );
+
+    if(!product){
+      alert("❌ No se encontró el producto.");
+      return;
+    }
+
+    const barcode =
+      "KRM-" +
+      Date.now().toString(36).toUpperCase() +
+      "-" +
+      Math.random().toString(36).substring(2,8).toUpperCase();
+
+    const result = await db
+      .from("tickets")
+      .insert({
+        event_id: activeEvent.id,
+        barcode: barcode,
+        product_id: product.id,
+        name: product.name,
+        price: Number(product.price),
+        used: false,
+        amount: Number(product.price)
+      })
+      .select("*")
+      .single();
+
+    if(result.error){
+      console.error("ERROR CREANDO BOLETO:", result.error);
+      alert(
+        "❌ No se pudo crear el boleto:\n\n" +
+        result.error.message
+      );
+      return;
+    }
+
+    alert(
+      "🎟️ BOLETO GENERADO\n\n" +
+      product.name +
+      "\n" +
+      money(product.price) +
+      "\n\nCódigo de barras:\n" +
+      barcode
+    );
+
+    await loadTickets();
+    await renderTickets();
+
+  }catch(error){
+
+    console.error(error);
+
+    alert(
+      "❌ Error al generar boleto:\n\n" +
+      error.message
+    );
+
+  }
+}
+
+/* =====================================================
+   ADMIN
+   ===================================================== */
+
+async function renderAdmin(){
+
+  const screen =
+    document.getElementById("screen");
+
+
+  let error = null;
+
+
+  try{
+
+    await loadEvents();
+
+  }catch(e){
+
+    error = e;
+
+  }
+
+
+  screen.innerHTML = `
+
+    ${
+      error
+      ?
+      errorMessage(error.message)
+      :
+      ""
+    }
+
+
+    <div class="card">
+
+      <h2>⚙️ Administración</h2>
+
+      <p>
+
+        <strong>
+          Evento activo:
+        </strong>
+
+      </p>
+
+      <h3>
+        ${
+          activeEvent
+          ?
+          escapeHtml(activeEvent.name)
+          :
+          "Sin evento"
+        }
+      </h3>
+
+      <button
+        class="primary"
+        onclick="newEvent()"
+      >
+        🎪 NUEVA KERMÉS
+      </button>
+
+      <p class="small">
+        Las ventas y boletos anteriores
+        se conservan al crear un evento nuevo.
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>🔄 Estado</h2>
+
+      ${
+        db
+        ?
+        `
+          <span class="status">
+            Base de datos conectada
+          </span>
+        `
+        :
+        `
+          <div class="error">
+            Base de datos no conectada.
+          </div>
+        `
+      }
+
+      <p>
+        Productos:
+        <strong>${products.length}</strong>
+        · Ventas:
+        <strong>${sales.length}</strong>
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>📦 Productos</h2>
+
+      ${
+        products.length
+        ?
+        products.map(p => `
+
+          <div class="cart-item">
+
+            <span>
+              ${escapeHtml(p.name)}
+            </span>
+
+            <strong>
+              ${money(p.price)}
+            </strong>
+
+          </div>
+
+        `).join("")
+        :
+        `
+          <div class="empty">
+            No hay productos.
+          </div>
+        `
+      }
+
+    </div>
+
+  `;
+
+}
+
+
+/* =====================================================
+   NUEVO EVENTO
+   ===================================================== */
+
+async function newEvent(){
+
+  if(!db){
+
+    alert("Supabase no está conectado.");
+
+    return;
+
+  }
+
+
+  const name =
+    prompt(
+      "Nombre de la nueva Kermés:",
+      "Kermés Septiembre 2026"
+    );
+
+
+  if(!name || !name.trim()){
+
+    return;
+
+  }
+
+
+  /*
+   * Desactivamos el evento anterior
+   */
+
+  if(activeEvent){
+
+    const update =
+      await db
+        .from("events")
+        .update({active:false})
+        .eq("id",activeEvent.id);
+
+
+    if(update.error){
+
+      alert(update.error.message);
+
+      return;
+
+    }
+
+  }
+
+
+  /*
+   * Creamos nuevo evento
+   */
+
+  const result =
+    await db
+      .from("events")
+      .insert({
+
+        name:name.trim(),
+
+        active:true
+
+      })
+      .select()
+      .single();
+
+
+  if(result.error){
+
+    alert(result.error.message);
+
+    console.error(result.error);
+
+    return;
+
+  }
+
+
+  activeEvent =
+    result.data;
+
+
+  await loadAll();
+
+
+  alert(
+    `🎪 Evento creado:\n${activeEvent.name}`
+  );
+
+
+  show("sell");
+
+}
+
+
+/* =====================================================
+   ARRANQUE
+   ===================================================== */
+
+async function init(){
+
+  const connected =
+    initSupabase();
+
+
+  if(!connected){
+
+    document.getElementById(
+      "screen"
+    ).innerHTML = `
+
+      <div class="card">
+
+        <h2>⚠️ Configuración pendiente</h2>
+
+        <div class="error">
+          Debes colocar tu SUPABASE_URL
+          y SUPABASE_ANON_KEY en el código.
+        </div>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  try{
+
+    await loadAll();
+
+    show("sell");
+
+  }catch(error){
+
+    console.error(error);
+
+    document.getElementById(
+      "screen"
+    ).innerHTML = `
+
+      <div class="card">
+
+        <h2>
+          ⚠️ Error con Supabase
+        </h2>
+
+        ${errorMessage(error.message)}
+
+        <button
+          class="primary"
+          onclick="location.reload()"
+        >
+          🔄 Recargar
+        </button>
+
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+init();
+
+</script>
+
+</body>
+</html>
   name="viewport"
   content="width=device-width,initial-scale=1,viewport-fit=cover"
 >
