@@ -2673,12 +2673,11 @@ async function newEvent(){
 
 async function init(){
 
-  const connected =
-    window.addEventListener("beforeunload", () => {
-  stopTicketScanner();
-});
+  window.addEventListener("beforeunload", () => {
+    stopTicketScanner();
+  });
 
-initSupabase();
+  const connected = initSupabase();
 
 
   if(!connected){
