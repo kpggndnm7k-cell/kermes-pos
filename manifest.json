@@ -1,1 +1,9 @@
-{"name":"KERMÉS POS","short_name":"Kermés POS","start_url":"./","display":"standalone","background_color":"#f3f4f6","theme_color":"#111827","icons":[]}
+{
+  "name": "KERMÉS POS",
+  "short_name": "KERMÉS POS",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#0f172a",
+  "icons": []
+}

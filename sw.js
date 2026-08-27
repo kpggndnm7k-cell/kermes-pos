@@ -1,1 +1,8 @@
-const CACHE="kermes-pos-v5";self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(["./","./index.html","./manifest.json"]))));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))))
+const CACHE='kermes-pos-v1';
+self.addEventListener('install',e=>self.skipWaiting());
+self.addEventListener('activate',e=>self.clients.claim());
+self.addEventListener('fetch',e=>{
+  if(e.request.method==='GET' && e.request.url.startsWith(self.location.origin)){
+    e.respondWith(caches.open(CACHE).then(c=>c.match(e.request).then(x=>x||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r;}))));
+  }
+});
