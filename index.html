@@ -413,6 +413,7 @@ let currentView = "sell";
 // Lector de boletos: se mantiene separado del flujo actual de ventas.
 let ticketScanner = null;
 let scannedTicket = null;
+let pendingTicketCodes = [];
 
 
 /* =====================================================
@@ -1063,12 +1064,9 @@ function renderScannedTicket(ticket){
       <div><strong>Importe:</strong> ${money(ticket.amount ?? ticket.price)}</div>
       <div class="small" style="margin-top:6px">Código: ${escapeHtml(ticket.barcode)}</div>
 
-      <button
-        class="primary"
-        onclick="redeemScannedTicket()"
-      >
-        ✅ Canjear boleto
-      </button>
+      <div class="status" style="margin-top:14px">
+        ✅ Agregado al total. Confirma la venta para finalizar.
+      </div>
     </div>
   `;
 }
@@ -1119,11 +1117,28 @@ async function validateTicketBarcode(barcode){
 
   if(scannedTicket.used){
     setScannerStatus("🔴 Boleto ya utilizado.", "scanner-invalid");
-  }else{
-    setScannerStatus("🟢 Boleto válido.", "scanner-valid");
+    renderScannedTicket(scannedTicket);
+    return;
   }
 
+  // El boleto válido se agrega automáticamente al carrito.
+  // No se marca como usado todavía; se marca al confirmar la venta.
+  const ticketCode = String(scannedTicket.barcode || "");
+
+  if(pendingTicketCodes.includes(ticketCode)){
+    setScannerStatus("⚠️ Este boleto ya está agregado a la venta.", "scanner-invalid");
+    renderScannedTicket(scannedTicket);
+    return;
+  }
+
+  addTicketToCart(scannedTicket);
+  pendingTicketCodes.push(ticketCode);
+
+  setScannerStatus("🟢 Boleto agregado al total.", "scanner-valid");
   renderScannedTicket(scannedTicket);
+
+  // Actualizamos inmediatamente el total del carrito.
+  renderSell();
 }
 
 
@@ -1385,6 +1400,36 @@ function addToCart(productId){
 }
 
 
+function addTicketToCart(ticket){
+
+  const ticketProductId = ticket.product_id ?? ("ticket-" + String(ticket.id));
+  const ticketPrice = Number(ticket.amount ?? ticket.price ?? 0);
+  const ticketName = String(ticket.name || "Boleto");
+
+  const existing = cart.find(item =>
+    String(item.id) === String(ticketProductId) &&
+    item.ticketBased === true
+  );
+
+  if(existing){
+    existing.quantity++;
+    if(!Array.isArray(existing.ticketCodes)){
+      existing.ticketCodes = [];
+    }
+    existing.ticketCodes.push(String(ticket.barcode));
+  }else{
+    cart.push({
+      id: ticketProductId,
+      name: ticketName,
+      price: ticketPrice,
+      quantity: 1,
+      ticketBased: true,
+      ticketCodes: [String(ticket.barcode)]
+    });
+  }
+}
+
+
 function cartTotal(){
 
   return cart.reduce(
@@ -1402,6 +1447,8 @@ function cartTotal(){
 function clearCart(){
 
   cart = [];
+  pendingTicketCodes = [];
+  scannedTicket = null;
 
   renderSell();
 
@@ -1611,6 +1658,27 @@ async function confirmSale(){
   }
 
 
+  // Los boletos escaneados se marcan como usados SOLO después de registrar la venta.
+  if(pendingTicketCodes.length){
+    const usedAt = new Date().toISOString();
+
+    for(const code of pendingTicketCodes){
+      const ticketResult = await db
+        .from("tickets")
+        .update({
+          used:true,
+          used_at:usedAt
+        })
+        .eq("event_id", activeEvent.id)
+        .eq("barcode", code)
+        .eq("used", false);
+
+      if(ticketResult.error){
+        console.error("No se pudo marcar boleto como usado:", ticketResult.error);
+      }
+    }
+  }
+
   alert(
     `✅ Venta registrada\n\n` +
     `Total: ${money(total)}\n` +
@@ -1620,6 +1688,8 @@ async function confirmSale(){
 
 
   cart = [];
+  pendingTicketCodes = [];
+  scannedTicket = null;
 
 
   await loadAll();
