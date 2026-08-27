@@ -2526,10 +2526,17 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
 </body>
 </html>`;
 
-  const blob = new Blob([sheetHTML], {type:"text/html;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  printWindow.location.href = url;
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  // Escribimos directamente en la ventana nueva. Esto es más estable en Safari/iPhone
+  // que navegar a un Blob URL y evita que la planilla quede en blanco o no aparezca.
+  try {
+    printWindow.document.open();
+    printWindow.document.write(sheetHTML);
+    printWindow.document.close();
+  } catch(error){
+    console.error("ERROR ABRIENDO PLANILLA:", error);
+    try { printWindow.close(); } catch(e) {}
+    alert("⚠️ No se pudo preparar la planilla para impresión.");
+  }
 }
 
 function printTicket(ticket){
