@@ -1671,7 +1671,7 @@ async function renderTickets(){
                     </td>
 
                     <td>
-                      ${money(t.amount)}
+                      ${t.used ? "Usado" : "Disponible"}
                     </td>
 
                   </tr>
@@ -1712,8 +1712,8 @@ async function createTicket(){
   const amount =
     Number(
       prompt(
-        "Importe del boleto:",
-        "0"
+        "El boleto no tiene importe. Presiona Aceptar para generarlo:",
+        ""
       )
     );
 
@@ -1726,8 +1726,9 @@ async function createTicket(){
 
 
   const code =
-    "KRM-" +
-    Date.now().toString(36).toUpperCase();
+    manualCode ||
+    ("KRM-" +
+    Date.now().toString(36).toUpperCase());
 
 
   const result =
@@ -1737,9 +1738,7 @@ async function createTicket(){
 
         event_id:activeEvent.id,
 
-        code:code,
-
-        amount:amount
+        code:code
 
       });
 
