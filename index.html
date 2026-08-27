@@ -1134,7 +1134,7 @@ async function addCash(){
 
       event_id:activeEvent.id,
 
-      type:type,
+      type: type === "Entrada" ? "in" : "out",
 
       amount:amount,
 
@@ -1151,7 +1151,7 @@ async function addCash(){
 
         event_id:activeEvent.id,
 
-        type:type,
+        type: type === "Entrada" ? "in" : "out",
 
         amount:amount,
 
