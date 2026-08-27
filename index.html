@@ -319,6 +319,44 @@ td{
   .scanner-actions{grid-template-columns:1fr;}
 }
 
+.admin-product-form{
+  margin-top:18px;
+  padding:18px;
+  border:1px solid #e5e7eb;
+  border-radius:18px;
+  background:#f8fafc;
+}
+
+.admin-product-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:16px 0;
+  border-bottom:1px solid #e5e7eb;
+}
+
+.admin-product-row:last-child{
+  border-bottom:0;
+}
+
+.product-delete-btn{
+  width:auto;
+  margin-top:0;
+  padding:11px 16px;
+  white-space:nowrap;
+}
+
+@media(max-width:700px){
+  .admin-product-row{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .product-delete-btn{
+    width:100%;
+  }
+}
+
 </style>
 
 </head>
@@ -2739,20 +2777,64 @@ async function renderAdmin(){
 
       <h2>📦 Productos</h2>
 
+      <p class="small">
+        Agrega productos nuevos o desactiva los que ya no quieras vender.
+        Los productos desactivados no aparecen en <strong>Cobrar</strong> ni en <strong>Boletos</strong>.
+      </p>
+
+      <div class="admin-product-form">
+
+        <label for="newProductName">Nombre del producto</label>
+        <input
+          id="newProductName"
+          type="text"
+          maxlength="100"
+          placeholder="Ej. 🌮 Taco"
+        >
+
+        <label for="newProductPrice">Precio</label>
+        <input
+          id="newProductPrice"
+          type="number"
+          min="0.01"
+          step="0.01"
+          inputmode="decimal"
+          placeholder="25.00"
+        >
+
+        <button
+          class="primary"
+          onclick="addProduct()"
+        >
+          ➕ AGREGAR PRODUCTO
+        </button>
+
+      </div>
+
+      <h3 style="margin-top:28px;">Productos activos</h3>
+
       ${
         products.length
         ?
         products.map(p => `
 
-          <div class="cart-item">
+          <div class="admin-product-row">
 
-            <span>
-              ${escapeHtml(p.name)}
-            </span>
+            <div>
+              <div class="cart-name">
+                ${escapeHtml(p.name)}
+              </div>
+              <div class="small">
+                ${money(p.price)}
+              </div>
+            </div>
 
-            <strong>
-              ${money(p.price)}
-            </strong>
+            <button
+              class="danger product-delete-btn"
+              onclick="deactivateProduct(${Number(p.id)})"
+            >
+              🗑️ Eliminar
+            </button>
 
           </div>
 
@@ -2760,7 +2842,7 @@ async function renderAdmin(){
         :
         `
           <div class="empty">
-            No hay productos.
+            No hay productos activos.
           </div>
         `
       }
@@ -2768,6 +2850,125 @@ async function renderAdmin(){
     </div>
 
   `;
+
+}
+
+
+/* =====================================================
+   ADMINISTRAR PRODUCTOS
+   ===================================================== */
+
+async function addProduct(){
+
+  if(!db){
+    alert("❌ Supabase no está conectado.");
+    return;
+  }
+
+  const nameInput = document.getElementById("newProductName");
+  const priceInput = document.getElementById("newProductPrice");
+
+  const name = String(nameInput?.value || "").trim();
+  const price = Number(priceInput?.value);
+
+  if(!name){
+    alert("❌ Escribe el nombre del producto.");
+    return;
+  }
+
+  if(!Number.isFinite(price) || price <= 0){
+    alert("❌ Escribe un precio válido mayor a 0.");
+    return;
+  }
+
+  const button = document.querySelector('.admin-product-form .primary');
+  if(button){
+    button.disabled = true;
+    button.textContent = "⏳ AGREGANDO...";
+  }
+
+  try{
+
+    const result = await db
+      .from("products")
+      .insert({
+        name: name,
+        price: price,
+        active: true
+      })
+      .select("*")
+      .single();
+
+    if(result.error){
+      throw result.error;
+    }
+
+    await loadProducts();
+
+    alert(`✅ Producto agregado correctamente.\n\n${name} — ${money(price)}`);
+
+    renderAdmin();
+
+  }catch(error){
+
+    console.error(error);
+    alert("❌ No se pudo agregar el producto: " + (error.message || error));
+
+  }finally{
+
+    if(button){
+      button.disabled = false;
+      button.textContent = "➕ AGREGAR PRODUCTO";
+    }
+
+  }
+
+}
+
+
+async function deactivateProduct(productId){
+
+  if(!db){
+    alert("❌ Supabase no está conectado.");
+    return;
+  }
+
+  const product = products.find(p => Number(p.id) === Number(productId));
+
+  if(!product){
+    alert("❌ No se encontró el producto.");
+    return;
+  }
+
+  const confirmed = confirm(
+    `¿Eliminar el producto "${product.name}" de la venta?\n\n` +
+    `Se conservarán sus ventas y boletos anteriores.`
+  );
+
+  if(!confirmed){
+    return;
+  }
+
+  try{
+
+    const result = await db
+      .from("products")
+      .update({active:false})
+      .eq("id", productId);
+
+    if(result.error){
+      throw result.error;
+    }
+
+    await loadProducts();
+    renderAdmin();
+
+  }catch(error){
+
+    console.error(error);
+    alert("❌ No se pudo eliminar el producto: " + (error.message || error));
+
+  }
 
 }
 
