@@ -2127,13 +2127,43 @@ async function renderTickets(){
             }
           </select>
 
-          <button
-            class="primary"
-            onclick="createTicket()"
-            ${products.length ? "" : "disabled"}
+          <label style="display:block;margin-top:14px">Cantidad de boletos</label>
+          <input
+            id="ticketQuantity"
+            type="number"
+            min="1"
+            max="5000"
+            step="1"
+            value="1"
+            inputmode="numeric"
+            style="width:100%;margin-bottom:14px"
           >
-            🎟️ Generar boleto
-          </button>
+
+          <div class="small" style="margin-bottom:14px">
+            Puedes generar desde 1 hasta 5,000 boletos del producto seleccionado.
+          </div>
+
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <button
+              class="primary"
+              onclick="createTicket()"
+              ${products.length ? "" : "disabled"}
+              style="flex:1;min-width:240px"
+            >
+              🎟️ Generar boletos
+            </button>
+            <button
+              class="secondary"
+              onclick="printSelectedProductSheet()"
+              ${products.length ? "" : "disabled"}
+              style="flex:1;min-width:240px"
+            >
+              🖨️ Imprimir planilla
+            </button>
+          </div>
+          <div class="small" style="margin-top:10px">
+            La planilla imprime varios boletos por hoja, cada uno con su código de barras único.
+          </div>
         `
         : `
           <div class="empty">
@@ -2197,9 +2227,6 @@ async function renderTickets(){
 
 async function createTicket(){
 
-  // Abrimos la ventana ANTES del await para que Safari no bloquee la impresión.
-  let printWindow = null;
-
   try{
 
     if(!db){
@@ -2213,9 +2240,17 @@ async function createTicket(){
     }
 
     const select = document.getElementById("ticketProduct");
+    const quantityInput = document.getElementById("ticketQuantity");
 
     if(!select || !select.value){
       alert("❌ Selecciona un producto.");
+      return;
+    }
+
+    const quantity = Number.parseInt(quantityInput?.value || "1", 10);
+
+    if(!Number.isInteger(quantity) || quantity < 1 || quantity > 5000){
+      alert("❌ La cantidad debe ser un número entre 1 y 5,000.");
       return;
     }
 
@@ -2228,67 +2263,236 @@ async function createTicket(){
       return;
     }
 
-    // Ventana creada por el clic del usuario: Safari normalmente permite esta ventana.
-    printWindow = window.open("about:blank", "_blank");
+    const price = Number(product.price);
 
-    const barcode =
-      "KRM-" +
-      Date.now().toString(36).toUpperCase() +
-      "-" +
-      Math.random().toString(36).substring(2,8).toUpperCase();
+    if(!Number.isFinite(price)){
+      alert("❌ El precio del producto no es válido.");
+      return;
+    }
+
+    // Generamos todos los boletos antes de enviarlos a Supabase.
+    // Cada boleto recibe un código único, incluso si se generan cientos.
+    const rows = [];
+    const now = Date.now();
+
+    for(let i = 0; i < quantity; i++){
+
+      const uniquePart =
+        (now + i).toString(36).toUpperCase() +
+        "-" +
+        crypto.randomUUID().replace(/-/g, "").substring(0, 8).toUpperCase();
+
+      rows.push({
+        event_id: activeEvent.id,
+        barcode: "KRM-" + uniquePart,
+        product_id: product.id,
+        name: product.name,
+        price: price,
+        used: false,
+        amount: price
+      });
+    }
+
+    // Desactivamos el botón durante la generación para evitar duplicados
+    // por doble clic.
+    const button = document.querySelector('#screen button[onclick="createTicket()"]');
+    if(button){
+      button.disabled = true;
+      button.textContent = "⏳ Generando boletos...";
+    }
 
     const result = await db
       .from("tickets")
-      .insert({
-        event_id: activeEvent.id,
-        barcode: barcode,
-        product_id: product.id,
-        name: product.name,
-        price: Number(product.price),
-        used: false,
-        amount: Number(product.price)
-      })
-      .select("*")
-      .single();
+      .insert(rows)
+      .select("*");
 
     if(result.error){
-      if(printWindow && !printWindow.closed){
-        printWindow.close();
-      }
-
-      console.error("ERROR CREANDO BOLETO:", result.error);
-
+      console.error("ERROR CREANDO BOLETOS:", result.error);
       alert(
-        "❌ No se pudo crear el boleto:\n\n" +
+        "❌ No se pudieron crear los boletos:\n\n" +
         result.error.message
       );
       return;
     }
 
-    const ticket = result.data;
-
-    // Mostrar el boleto inmediatamente en la ventana que se abrió con el clic.
-    openPrintableTicket(printWindow, ticket);
+    const created = result.data || [];
 
     await loadTickets();
     await renderTickets();
 
+    alert(
+      `✅ Boletos generados correctamente\n\n` +
+      `Producto: ${product.name}\n` +
+      `Cantidad: ${created.length}\n` +
+      `Total: ${money(price * created.length)}`
+    );
+
   }catch(error){
 
-    if(printWindow && !printWindow.closed){
-      printWindow.close();
-    }
-
-    console.error(error);
+    console.error("ERROR GENERANDO BOLETOS:", error);
 
     alert(
-      "❌ Error al generar boleto:\n\n" +
-      error.message
+      "❌ Error al generar boletos:\n\n" +
+      (error?.message || String(error))
     );
 
   }
 }
 
+
+function printSelectedProductSheet(){
+
+  if(!activeEvent){
+    alert("❌ No hay evento activo.");
+    return;
+  }
+
+  const select = document.getElementById("ticketProduct");
+  if(!select || !select.value){
+    alert("❌ Selecciona un producto.");
+    return;
+  }
+
+  const productTickets = tickets.filter(t =>
+    Number(t.event_id) === Number(activeEvent.id) &&
+    String(t.product_id) === String(select.value) &&
+    !t.used
+  );
+
+  if(!productTickets.length){
+    alert("⚠️ No hay boletos disponibles de este producto para imprimir.");
+    return;
+  }
+
+  const quantityInput = document.getElementById("ticketQuantity");
+  const requested = Number.parseInt(quantityInput?.value || "1", 10);
+  const quantity = Number.isInteger(requested) && requested > 0
+    ? Math.min(requested, productTickets.length)
+    : productTickets.length;
+
+  const selectedTickets = productTickets.slice(0, quantity);
+  const printWindow = window.open("about:blank", "_blank");
+
+  if(!printWindow){
+    alert("⚠️ Safari bloqueó la ventana. Permite ventanas emergentes para KERMÉS POS.");
+    return;
+  }
+
+  openPrintableTicketSheet(printWindow, selectedTickets);
+}
+
+function openPrintableTicketSheet(printWindow, selectedTickets){
+
+  if(!printWindow || printWindow.closed){
+    alert("⚠️ No se pudo abrir la planilla para impresión.");
+    return;
+  }
+
+  const eventName = String(activeEvent?.name || "Kermés");
+
+  const cards = selectedTickets.map((ticket, index) => {
+    const barcode = String(ticket.barcode || "");
+    const name = String(ticket.name || "");
+    const amount = Number(ticket.amount ?? ticket.price ?? 0);
+    const barcodeId = "barcode_" + index;
+
+    return `
+      <div class="ticket">
+        <div class="brand">🎪 KERMÉS POS</div>
+        <div class="event">${escapeHtml(eventName)}</div>
+        <div class="product">${escapeHtml(name)}</div>
+        <div class="price">${money(amount)}</div>
+        <svg id="${barcodeId}"></svg>
+        <div class="code">${escapeHtml(barcode)}</div>
+        <div class="status">🎟️ BOLETO VÁLIDO</div>
+      </div>
+    `;
+  }).join("");
+
+  const barcodeScripts = selectedTickets.map((ticket, index) => {
+    const barcode = String(ticket.barcode || "");
+    return `
+      JsBarcode('#barcode_${index}', ${JSON.stringify(barcode)}, {
+        format: 'CODE128',
+        width: 1.35,
+        height: 42,
+        displayValue: false,
+        margin: 2
+      });
+    `;
+  }).join("\n");
+
+  const sheetHTML = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planilla de boletos - KERMÉS POS</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:white; color:#111827; }
+  body { font-family: Arial, Helvetica, sans-serif; }
+  .sheet {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5mm;
+    width:100%;
+  }
+  .ticket {
+    border:1.2px dashed #555;
+    border-radius:8px;
+    padding:4mm 3mm;
+    text-align:center;
+    min-height:62mm;
+    break-inside:avoid;
+    page-break-inside:avoid;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+  }
+  .brand { font-size:11px; font-weight:900; margin-bottom:1.5mm; }
+  .event { font-size:8px; color:#555; margin-bottom:2mm; }
+  .product { font-size:15px; font-weight:900; margin:1mm 0; }
+  .price { font-size:13px; font-weight:900; margin-bottom:2mm; }
+  svg { width:100%; max-width:52mm; height:12mm; }
+  .code { margin-top:1mm; font-family:monospace; font-size:7px; letter-spacing:.4px; word-break:break-all; }
+  .status { margin-top:1.5mm; font-size:7px; font-weight:700; }
+  @media print {
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">${cards}</div>
+<script>
+(function(){
+  function ready(){
+    if(typeof JsBarcode === 'function'){
+      try {
+        ${barcodeScripts}
+        setTimeout(function(){ window.print(); }, 500);
+      } catch(e) {
+        document.body.insertAdjacentHTML('afterbegin', '<p style="font-family:Arial;color:#b91c1c">No se pudieron generar los códigos de barras.</p>');
+        console.error(e);
+      }
+    } else {
+      setTimeout(ready, 150);
+    }
+  }
+  window.addEventListener('load', ready);
+})();
+<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([sheetHTML], {type:"text/html;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  printWindow.location.href = url;
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
 
 function printTicket(ticket){
 
