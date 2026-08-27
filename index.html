@@ -2378,7 +2378,7 @@ async function createTicket(){
 }
 
 
-function printSelectedProductSheet(){
+async function printSelectedProductSheet(){
 
   if(!activeEvent){
     alert("❌ No hay evento activo.");
@@ -2391,24 +2391,42 @@ function printSelectedProductSheet(){
     return;
   }
 
-  const productTickets = tickets.filter(t =>
-    Number(t.event_id) === Number(activeEvent.id) &&
-    String(t.product_id) === String(select.value) &&
-    !t.used
-  );
+  const quantityInput = document.getElementById("ticketQuantity");
+  const requested = Number.parseInt(quantityInput?.value || "1", 10);
 
-  if(!productTickets.length){
+  if(!Number.isInteger(requested) || requested < 1 || requested > 5000){
+    alert("❌ La cantidad debe ser un número entre 1 y 5,000.");
+    return;
+  }
+
+  // Consultamos directamente Supabase para no depender de la lista local
+  // de boletos (que está limitada a 500 en la pantalla).
+  const result = await db
+    .from("tickets")
+    .select("*")
+    .eq("event_id", activeEvent.id)
+    .eq("product_id", select.value)
+    .eq("used", false)
+    .order("created_at", {ascending:true})
+    .limit(requested);
+
+  if(result.error){
+    console.error("ERROR CARGANDO BOLETOS PARA PLANILLA:", result.error);
+    alert("❌ No se pudieron cargar los boletos para imprimir:\n\n" + result.error.message);
+    return;
+  }
+
+  const selectedTickets = result.data || [];
+
+  if(!selectedTickets.length){
     alert("⚠️ No hay boletos disponibles de este producto para imprimir.");
     return;
   }
 
-  const quantityInput = document.getElementById("ticketQuantity");
-  const requested = Number.parseInt(quantityInput?.value || "1", 10);
-  const quantity = Number.isInteger(requested) && requested > 0
-    ? Math.min(requested, productTickets.length)
-    : productTickets.length;
+  if(selectedTickets.length < requested){
+    alert(`⚠️ Solo hay ${selectedTickets.length} boletos disponibles de este producto. Se imprimirá esa cantidad.`);
+  }
 
-  const selectedTickets = productTickets.slice(0, quantity);
   const printWindow = window.open("about:blank", "_blank");
 
   if(!printWindow){
