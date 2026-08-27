@@ -14,6 +14,7 @@ header{background:#0f172a;color:white;padding:22px 20px;border-radius:0 0 22px 2
 h1{margin:0;font-size:28px}.sub{opacity:.7;margin-top:4px}
 nav{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
 button{border:0;border-radius:13px;padding:13px 10px;font-size:15px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
 nav button{background:white;color:#111827;box-shadow:0 1px 5px #0001}
 nav button.active{background:#0f172a;color:white}
 main{padding:8px 12px}.card{background:white;border-radius:20px;padding:18px;margin-bottom:12px;box-shadow:0 3px 15px #0000000d}
@@ -67,95 +68,369 @@ function configured(){
   return window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
     !SUPABASE_URL.startsWith('PEGA_AQUI') && !SUPABASE_ANON_KEY.startsWith('PEGA_AQUI');
 }
+
 async function init(){
-  if(!configured()){showError('Falta conectar la base de datos','Abre config.js y coloca SUPABASE_URL y SUPABASE_ANON_KEY.');return}
+  if(!configured()){
+    showError('Falta conectar la base de datos','Abre config.js y coloca SUPABASE_URL y SUPABASE_ANON_KEY.');
+    return;
+  }
   db=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
   try{
     let r=await db.from('products').select('*').eq('active',true).order('name');
-    if(r.error)throw r.error; products=r.data||[];
+    if(r.error)throw r.error;
+    products=r.data||[];
+
     r=await db.from('events').select('*').eq('active',true).order('created_at',{ascending:false}).limit(1);
     if(r.error)throw r.error;
     activeEvent=r.data?.[0]||null;
+
     if(!activeEvent){
       r=await db.from('events').insert({name:'Kermés Septiembre 2026',active:true}).select().single();
-      if(r.error)throw r.error; activeEvent=r.data;
+      if(r.error)throw r.error;
+      activeEvent=r.data;
     }
-    await refreshData(); show('sell');
-  }catch(e){showError('No se pudo conectar con Supabase',e.message||String(e))}
+
+    await refreshData();
+    show('sell');
+  }catch(e){
+    showError('No se pudo conectar con Supabase',e.message||String(e));
+  }
 }
+
 async function refreshData(){
-  if(!db)return;
-  let r=await db.from('sales').select('*').eq('event_id',activeEvent?.id).order('created_at',{ascending:false}).limit(500);
+  if(!db||!activeEvent)return;
+
+  let r=await db.from('sales').select('*').eq('event_id',activeEvent.id).order('created_at',{ascending:false}).limit(500);
   if(!r.error)sales=r.data||[];
-  r=await db.from('cash_movements').select('*').eq('event_id',activeEvent?.id).order('created_at',{ascending:false}).limit(500);
+
+  r=await db.from('cash_movements').select('*').eq('event_id',activeEvent.id).order('created_at',{ascending:false}).limit(500);
   if(!r.error)cashMovements=r.data||[];
 }
-function showError(title,msg){$('screen').innerHTML=`<div class="card"><h2>⚠️ ${esc(title)}</h2><p>${esc(msg)}</p><button class="primary" onclick="location.reload()">Recargar</button></div>`}
+
+function showError(title,msg){
+  $('screen').innerHTML=`<div class="card"><h2>⚠️ ${esc(title)}</h2><p>${esc(msg)}</p><button class="primary" onclick="location.reload()">Recargar</button></div>`;
+}
+
 function show(page){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   const map={sell:'nSell',close:'nClose',tickets:'nTickets',admin:'nAdmin'};
   $(map[page])?.classList.add('active');
+
   if(page==='sell')renderSell();
   if(page==='close')renderClose();
   if(page==='tickets')renderTickets();
   if(page==='admin')renderAdmin();
 }
+
 function renderSell(){
-  $('screen').innerHTML=`<div class="card"><h2>🛒 Nueva venta</h2><div class="small">${esc(activeEvent?.name||'Sin evento')}</div></div>
-  <div class="grid">${products.map(p=>`<button class="product" onclick="add(${p.id})"><strong>${esc(p.name)}</strong><span class="price">${money(p.price)}</span></button>`).join('')}</div>
-  <div class="card" style="margin-top:12px"><h2>Carrito</h2>${cart.length?cart.map((x,i)=>`<div class="item"><span>${esc(x.name)} × ${x.qty}</span><b>${money(x.price*x.qty)}</b></div>`).join(''):'<p class="small">Agrega productos.</p>'}<div class="total">${money(cart.reduce((s,x)=>s+x.price*x.qty,0))}</div><button class="primary" onclick="finishSale()" ${cart.length?'':'disabled'}>CONFIRMAR VENTA</button></div>`;
+  const total=cart.reduce((s,x)=>s+x.price*x.qty,0);
+
+  $('screen').innerHTML=`
+  <div class="card">
+    <h2>🛒 Nueva venta</h2>
+    <div class="small">${esc(activeEvent?.name||'Sin evento')}</div>
+  </div>
+
+  <div class="grid">
+    ${products.map(p=>`
+      <button class="product" onclick="add(${p.id})">
+        <strong>${esc(p.name)}</strong>
+        <span class="price">${money(p.price)}</span>
+      </button>`).join('')}
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>Carrito</h2>
+    ${cart.length
+      ?cart.map((x,i)=>`
+        <div class="item">
+          <span>${esc(x.name)} × ${x.qty}</span>
+          <b>${money(x.price*x.qty)}</b>
+        </div>`).join('')
+      :'<p class="small">Agrega productos.</p>'}
+
+    <div class="total">${money(total)}</div>
+
+    ${cart.length?`
+      <label class="small">💵 Efectivo recibido</label>
+      <input id="cashReceived" type="number" step="0.01" min="${total}" placeholder="Ej. 100">
+
+      <div class="item">
+        <span>Cambio</span>
+        <b id="changePreview">${money(0)}</b>
+      </div>
+
+      <button class="primary" onclick="finishSale()">CONFIRMAR VENTA</button>
+      <button class="danger" style="margin-top:8px" onclick="clearCart()">Vaciar carrito</button>
+    `:''}
+  </div>`;
+
+  $('cashReceived')?.addEventListener('input',()=>{
+    const received=Number($('cashReceived').value||0);
+    const change=received-total;
+    $('changePreview').textContent=money(change>0?change:0);
+  });
 }
-function add(id){let p=products.find(x=>x.id===id),x=cart.find(x=>x.id===id);if(x)x.qty++;else cart.push({id:p.id,name:p.name,price:p.price,qty:1});renderSell()}
+
+function add(id){
+  const p=products.find(x=>x.id===id);
+  if(!p)return;
+
+  const x=cart.find(x=>x.id===id);
+  if(x)x.qty++;
+  else cart.push({id:p.id,name:p.name,price:Number(p.price),qty:1});
+
+  renderSell();
+}
+
+function clearCart(){
+  cart=[];
+  renderSell();
+}
+
 async function finishSale(){
   if(!cart.length||!activeEvent)return;
+
   const total=cart.reduce((s,x)=>s+x.price*x.qty,0);
-  const r=await db.from('sales').insert({event_id:activeEvent.id,total,payment_method:'efectivo'}).select().single();
+  const cashReceived=Number($('cashReceived')?.value||0);
+
+  if(cashReceived<total){
+    return alert('El efectivo recibido no puede ser menor que el total.');
+  }
+
+  const changeGiven=cashReceived-total;
+
+  const items=cart.map(x=>({
+    product_id:x.id,
+    name:x.name,
+    price:x.price,
+    quantity:x.qty,
+    subtotal:x.price*x.qty
+  }));
+
+  const r=await db.from('sales').insert({
+    event_id:activeEvent.id,
+    total,
+    cash_received:cashReceived,
+    change_given:changeGiven,
+    items
+  }).select().single();
+
   if(r.error)return alert(r.error.message);
-  cart=[];await refreshData();renderSell();alert('Venta registrada: '+money(total));
+
+  cart=[];
+  await refreshData();
+  renderSell();
+
+  alert(
+    '✅ Venta registrada\\n\\n' +
+    'Total: '+money(total)+'\\n' +
+    'Recibido: '+money(cashReceived)+'\\n' +
+    'Cambio: '+money(changeGiven)
+  );
 }
+
 function renderClose(){
-  const total=sales.reduce((s,x)=>s+Number(x.total),0);
-  const entradas=cashMovements.filter(x=>x.type==='entrada').reduce((s,x)=>s+Number(x.amount),0);
-  const salidas=cashMovements.filter(x=>x.type==='salida').reduce((s,x)=>s+Number(x.amount),0);
-  $('screen').innerHTML=`<div class="card"><h2>📊 Corte de caja</h2><div class="item"><span>Ventas</span><b>${money(total)}</b></div><div class="item"><span>Entradas</span><b>${money(entradas)}</b></div><div class="item"><span>Salidas</span><b>${money(salidas)}</b></div><div class="total">${money(total+entradas-salidas)}</div><p class="small">${sales.length} ventas registradas</p></div>
-  <div class="card"><h2>💵 Movimiento de caja</h2><div class="row"><input id="cashAmount" type="number" step="0.01" placeholder="Monto"><select id="cashType"><option value="entrada">Entrada</option><option value="salida">Salida</option></select></div><input id="cashDetail" placeholder="Detalle"><button class="primary" onclick="addCash()">Registrar movimiento</button></div>`;
+  const totalVentas=sales.reduce((s,x)=>s+Number(x.total||0),0);
+  const entradas=cashMovements.filter(x=>x.type==='entrada').reduce((s,x)=>s+Number(x.amount||0),0);
+  const salidas=cashMovements.filter(x=>x.type==='salida').reduce((s,x)=>s+Number(x.amount||0),0);
+  const efectivoVentas=sales.reduce((s,x)=>s+Number(x.cash_received||0)-Number(x.change_given||0),0);
+  const caja=totalVentas+entradas-salidas;
+
+  $('screen').innerHTML=`
+  <div class="card">
+    <h2>📊 Corte de caja</h2>
+    <div class="item"><span>Ventas</span><b>${money(totalVentas)}</b></div>
+    <div class="item"><span>Entradas</span><b>${money(entradas)}</b></div>
+    <div class="item"><span>Salidas</span><b>${money(salidas)}</b></div>
+    <div class="item"><span>Efectivo neto de ventas</span><b>${money(efectivoVentas)}</b></div>
+    <div class="total">${money(caja)}</div>
+    <p class="small">${sales.length} ventas registradas</p>
+  </div>
+
+  <div class="card">
+    <h2>💵 Movimiento de caja</h2>
+    <div class="row">
+      <input id="cashAmount" type="number" step="0.01" placeholder="Monto">
+      <select id="cashType">
+        <option value="entrada">Entrada</option>
+        <option value="salida">Salida</option>
+      </select>
+    </div>
+    <input id="cashDetail" placeholder="Detalle">
+    <button class="primary" onclick="addCash()">Registrar movimiento</button>
+  </div>`;
 }
-async function addCash(){const amount=Number($('cashAmount').value),type=$('cashType').value,detail=$('cashDetail').value;if(!amount)return alert('Escribe un monto');const r=await db.from('cash_movements').insert({event_id:activeEvent.id,type,amount,detail});if(r.error)return alert(r.error.message);await refreshData();renderClose()}
+
+async function addCash(){
+  const amount=Number($('cashAmount').value);
+  const type=$('cashType').value;
+  const detail=$('cashDetail').value.trim();
+
+  if(!amount||amount<=0)return alert('Escribe un monto válido.');
+  if(type==='salida'&&!detail)return alert('Escribe el detalle de la salida.');
+
+  const r=await db.from('cash_movements').insert({
+    event_id:activeEvent.id,
+    type,
+    amount,
+    description:detail
+  });
+
+  if(r.error){
+    // Compatibilidad con esquemas que usan "detail" en vez de "description".
+    const r2=await db.from('cash_movements').insert({
+      event_id:activeEvent.id,
+      type,
+      amount,
+      detail
+    });
+    if(r2.error)return alert(r.error.message);
+  }
+
+  await refreshData();
+  renderClose();
+}
+
 function renderTickets(){
-  $('screen').innerHTML=`<div class="card"><h2>🎟️ Boletos</h2><p class="small">El boleto se vincula al evento activo y no puede repetirse.</p><button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button></div><div class="card"><h2>Crear boleto</h2><input id="ticketCode" placeholder="Código del boleto"><button class="primary" onclick="createTicket()">Crear boleto</button></div>`;
+  $('screen').innerHTML=`
+  <div class="card">
+    <h2>🎟️ Boletos</h2>
+    <p class="small">El boleto se vincula al evento activo y no puede repetirse.</p>
+    <button class="primary" onclick="startScan()">📷 ESCANEAR BOLETO</button>
+  </div>
+
+  <div class="card">
+    <h2>Crear boleto</h2>
+    <input id="ticketCode" placeholder="Código del boleto">
+    <button class="primary" onclick="createTicket()">Crear boleto</button>
+  </div>`;
 }
-async function createTicket(){const code=$('ticketCode').value.trim();if(!code)return alert('Escribe un código');const r=await db.from('tickets').insert({code,event_id:activeEvent.id});if(r.error)return alert(r.error.message);$('ticketCode').value='';alert('Boleto creado')}
-async function manualScan(){const c=$('manual').value.trim();if(c){stopScan();await useTicket(c)}}
-async function useTicket(code){
-  const r=await db.from('tickets').select('*').eq('event_id',activeEvent.id).eq('code',code).maybeSingle();
+
+async function createTicket(){
+  const code=$('ticketCode').value.trim();
+  if(!code)return alert('Escribe un código.');
+
+  const r=await db.from('tickets').insert({
+    barcode:code,
+    event_id:activeEvent.id
+  });
+
   if(r.error)return alert(r.error.message);
-  if(!r.data)return alert('Boleto no encontrado');
-  if(r.data.used)return alert('⚠️ Este boleto ya fue utilizado');
-  const u=await db.from('tickets').update({used:true,used_at:new Date().toISOString()}).eq('id',r.data.id);
-  if(u.error)return alert(u.error.message);alert('✅ Boleto válido y marcado como usado');
+
+  $('ticketCode').value='';
+  alert('✅ Boleto creado');
 }
+
+async function manualScan(){
+  const c=$('manual').value.trim();
+  if(c){
+    stopScan();
+    await useTicket(c);
+  }
+}
+
+async function useTicket(code){
+  const r=await db.from('tickets')
+    .select('*')
+    .eq('event_id',activeEvent.id)
+    .eq('barcode',code)
+    .maybeSingle();
+
+  if(r.error)return alert(r.error.message);
+  if(!r.data)return alert('❌ Boleto no encontrado.');
+  if(r.data.used)return alert('⚠️ Este boleto ya fue utilizado.');
+
+  const u=await db.from('tickets')
+    .update({used:true,used_at:new Date().toISOString()})
+    .eq('id',r.data.id);
+
+  if(u.error)return alert(u.error.message);
+
+  alert('✅ Boleto válido y marcado como usado.');
+}
+
 async function startScan(){
   $('scanner').classList.remove('hidden');
+
   try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    $('video').srcObject=stream;await $('video').play();
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment'}
+    });
+
+    $('video').srcObject=stream;
+    await $('video').play();
+
     if('BarcodeDetector' in window){
       const detector=new BarcodeDetector();
-      const loop=async()=>{if(!stream)return;try{const codes=await detector.detect($('video'));if(codes[0]){const raw=codes[0].rawValue;stopScan();await useTicket(raw);return}}catch(e){}requestAnimationFrame(loop)};loop();
+
+      const loop=async()=>{
+        if(!stream)return;
+
+        try{
+          const codes=await detector.detect($('video'));
+
+          if(codes[0]){
+            const raw=codes[0].rawValue;
+            stopScan();
+            await useTicket(raw);
+            return;
+          }
+        }catch(e){}
+
+        requestAnimationFrame(loop);
+      };
+
+      loop();
+    }else{
+      alert('Tu navegador no admite lectura automática de códigos. Usa el código manual.');
     }
-  }catch(e){alert('No se pudo abrir la cámara. Puedes usar el código manual.')}
+  }catch(e){
+    alert('No se pudo abrir la cámara. Puedes usar el código manual.');
+  }
 }
-function stopScan(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('scanner').classList.add('hidden')}
+
+function stopScan(){
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+    stream=null;
+  }
+
+  $('scanner').classList.add('hidden');
+}
+
 function renderAdmin(){
- $('screen').innerHTML=`<div class="card"><h2>⚙️ Administración</h2><p><b>Evento activo:</b><br>${esc(activeEvent?.name||'Sin evento')}</p><button class="primary" onclick="newEvent()">🎪 NUEVA KERMÉS</button><p class="small">Las ventas y boletos anteriores se conservan al crear un evento nuevo.</p></div>
- <div class="card"><h2>🔄 Estado</h2><p class="badge">Base de datos conectada</p><p class="small">Productos: ${products.length} · Ventas: ${sales.length}</p></div>`;
+  $('screen').innerHTML=`
+  <div class="card">
+    <h2>⚙️ Administración</h2>
+    <p><b>Evento activo:</b><br>${esc(activeEvent?.name||'Sin evento')}</p>
+    <button class="primary" onclick="newEvent()">🎪 NUEVA KERMÉS</button>
+    <p class="small">Las ventas y boletos anteriores se conservan al crear un evento nuevo.</p>
+  </div>
+
+  <div class="card">
+    <h2>🔄 Estado</h2>
+    <p class="badge">Base de datos conectada</p>
+    <p class="small">Productos: ${products.length} · Ventas: ${sales.length}</p>
+  </div>`;
 }
+
 async function newEvent(){
- const name=prompt('Nombre de la nueva kermés:','Kermés Octubre 2026');if(!name)return;
- let r=await db.from('events').update({active:false}).eq('active',true);if(r.error)return alert(r.error.message);
- r=await db.from('events').insert({name,active:true}).select().single();if(r.error)return alert(r.error.message);
- activeEvent=r.data;cart=[];await refreshData();show('admin');
+  const name=prompt('Nombre de la nueva kermés:','Kermés Octubre 2026');
+  if(!name)return;
+
+  let r=await db.from('events').update({active:false}).eq('active',true);
+  if(r.error)return alert(r.error.message);
+
+  r=await db.from('events').insert({name,active:true}).select().single();
+  if(r.error)return alert(r.error.message);
+
+  activeEvent=r.data;
+  cart=[];
+  await refreshData();
+  show('admin');
 }
+
 init();
 </script>
 </body>
