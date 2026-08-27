@@ -14,7 +14,7 @@
 <title>KERMÉS POS</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://unpkg.com/@zxing/browser@0.2.0"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 
 <style>
 
@@ -271,6 +271,54 @@ td{
 
 }
 
+
+.ticket-scanner{
+  margin-top:18px;
+  padding:18px;
+  border:1px solid #e5e7eb;
+  border-radius:20px;
+  background:#f8fafc;
+}
+.ticket-scanner video{
+  width:100%;
+  max-height:360px;
+  object-fit:cover;
+  border-radius:16px;
+  background:#111827;
+  display:block;
+  margin-top:12px;
+}
+.scanner-status{
+  margin-top:12px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:#e2e8f0;
+  color:#334155;
+  font-weight:700;
+}
+.scanner-valid{
+  background:#dcfce7;
+  color:#166534;
+}
+.scanner-invalid{
+  background:#fee2e2;
+  color:#991b1b;
+}
+.scanner-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+.scanner-actions .primary,
+.scanner-actions .secondary{
+  margin-top:0;
+  width:100%;
+}
+@media(max-width:700px){
+  .scanner-actions{grid-template-columns:1fr;}
+}
+
 </style>
 
 </head>
@@ -362,9 +410,9 @@ let activeEvent = null;
 
 let currentView = "sell";
 
-// LECTOR DE BOLETOS: agregado sin tocar el flujo de ventas.
-let ticketReader = null;
-let ticketReaderControls = null;
+// Lector de boletos: se mantiene separado del flujo actual de ventas.
+let ticketScanner = null;
+let scannedTicket = null;
 
 
 /* =====================================================
@@ -645,9 +693,8 @@ async function loadAll(){
 
 function show(view){
 
-  if(view !== "sell"){
-    stopTicketScanner();
-  }
+  stopTicketScanner();
+  scannedTicket = null;
 
   currentView = view;
 
@@ -748,6 +795,78 @@ function renderSell(){
       <h3>
         ${escapeHtml(activeEvent.name)}
       </h3>
+
+    </div>
+
+
+    <div class="card">
+
+      <h2>📷 Lector de boletos</h2>
+
+      <div class="small">
+        Escanea el código de barras del boleto con la cámara del iPhone.
+      </div>
+
+      <div class="ticket-scanner">
+
+        <button
+          id="startScannerButton"
+          class="primary"
+          onclick="startTicketScanner()"
+        >
+          📷 Escanear boleto
+        </button>
+
+        <video
+          id="ticketScannerVideo"
+          playsinline
+          muted
+          autoplay
+          style="display:none"
+        ></video>
+
+        <div
+          id="ticketScannerStatus"
+          class="scanner-status"
+        >
+          Listo para escanear.
+        </div>
+
+        <div id="scannedTicketResult"></div>
+
+        <div class="scanner-actions">
+
+          <button
+            id="stopScannerButton"
+            class="secondary"
+            onclick="stopTicketScanner()"
+            style="display:none"
+          >
+            ⏹️ Detener cámara
+          </button>
+
+        </div>
+
+        <label>
+          O escribe el código manualmente
+        </label>
+
+        <input
+          id="manualTicketBarcode"
+          type="text"
+          autocomplete="off"
+          placeholder="KRM-..."
+        >
+
+        <button
+          class="secondary"
+          style="margin-top:10px;width:100%"
+          onclick="validateManualTicket()"
+        >
+          🔎 Validar código
+        </button>
+
+      </div>
 
     </div>
 
@@ -893,49 +1012,6 @@ function renderSell(){
 
     </div>
 
-    <!-- =================================================
-         LECTOR DE BOLETOS (NO MODIFICA EL COBRO)
-         ================================================= -->
-    <div class="card">
-
-      <h2>📷 Lector de boletos</h2>
-
-      <div class="small">
-        Escanea el código de barras del boleto con el iPhone.
-      </div>
-
-      <button
-        class="primary"
-        id="startTicketScanner"
-        onclick="startTicketScanner()"
-      >
-        📷 Escanear boleto
-      </button>
-
-      <div
-        id="ticketScannerBox"
-        style="display:none;margin-top:16px"
-      >
-        <video
-          id="ticketScannerVideo"
-          playsinline
-          muted
-          style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;background:#000"
-        ></video>
-
-        <button
-          class="danger"
-          onclick="stopTicketScanner()"
-          style="margin-top:12px"
-        >
-          ✖️ Cerrar lector
-        </button>
-      </div>
-
-      <div id="ticketScanResult" style="margin-top:16px"></div>
-
-    </div>
-
   `;
 
 }
@@ -945,62 +1021,215 @@ function renderSell(){
    LECTOR DE BOLETOS
    ===================================================== */
 
+function setScannerStatus(message, type = ""){
+
+  const status = document.getElementById("ticketScannerStatus");
+
+  if(!status) return;
+
+  status.className = "scanner-status" + (type ? " " + type : "");
+  status.textContent = message;
+}
+
+
+function renderScannedTicket(ticket){
+
+  const box = document.getElementById("scannedTicketResult");
+
+  if(!box) return;
+
+  if(!ticket){
+    box.innerHTML = "";
+    return;
+  }
+
+  if(ticket.used){
+
+    box.innerHTML = `
+      <div class="error" style="margin-top:12px">
+        🔴 Este boleto ya fue utilizado.
+        <br>
+        <span class="small">Código: ${escapeHtml(ticket.barcode)}</span>
+      </div>
+    `;
+
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="card" style="margin:12px 0 0;padding:18px;background:#f0fdf4">
+      <h3 style="margin-top:0">🟢 Boleto válido</h3>
+      <div><strong>Producto:</strong> ${escapeHtml(ticket.name)}</div>
+      <div><strong>Importe:</strong> ${money(ticket.amount ?? ticket.price)}</div>
+      <div class="small" style="margin-top:6px">Código: ${escapeHtml(ticket.barcode)}</div>
+
+      <button
+        class="primary"
+        onclick="redeemScannedTicket()"
+      >
+        ✅ Canjear boleto
+      </button>
+    </div>
+  `;
+}
+
+
+async function validateTicketBarcode(barcode){
+
+  const cleanBarcode = String(barcode || "").trim();
+
+  if(!cleanBarcode){
+    setScannerStatus("Escribe o escanea un código de barras.", "scanner-invalid");
+    return;
+  }
+
+  if(!db){
+    setScannerStatus("Supabase no está conectado.", "scanner-invalid");
+    return;
+  }
+
+  if(!activeEvent){
+    setScannerStatus("No hay un evento activo.", "scanner-invalid");
+    return;
+  }
+
+  setScannerStatus("🔎 Buscando boleto...", "");
+  scannedTicket = null;
+  renderScannedTicket(null);
+
+  const result = await db
+    .from("tickets")
+    .select("*")
+    .eq("event_id", activeEvent.id)
+    .eq("barcode", cleanBarcode)
+    .maybeSingle();
+
+  if(result.error){
+    console.error("Error validando boleto:", result.error);
+    setScannerStatus("❌ No se pudo consultar el boleto.", "scanner-invalid");
+    return;
+  }
+
+  if(!result.data){
+    setScannerStatus("❌ Boleto no encontrado para este evento.", "scanner-invalid");
+    return;
+  }
+
+  scannedTicket = result.data;
+
+  if(scannedTicket.used){
+    setScannerStatus("🔴 Boleto ya utilizado.", "scanner-invalid");
+  }else{
+    setScannerStatus("🟢 Boleto válido.", "scanner-valid");
+  }
+
+  renderScannedTicket(scannedTicket);
+}
+
+
+async function validateManualTicket(){
+
+  const input = document.getElementById("manualTicketBarcode");
+
+  await validateTicketBarcode(input?.value || "");
+}
+
+
 async function startTicketScanner(){
-
-  const video = document.getElementById("ticketScannerVideo");
-  const box = document.getElementById("ticketScannerBox");
-  const resultBox = document.getElementById("ticketScanResult");
-
-  if(!video || !box || !resultBox){
-    return;
-  }
-
-  if(typeof ZXingBrowser === "undefined"){
-    resultBox.innerHTML = errorMessage("No se pudo cargar el lector de códigos. Recarga la página.");
-    return;
-  }
-
-  resultBox.innerHTML = `<div class="small">Apunta la cámara al código de barras del boleto.</div>`;
-  box.style.display = "block";
 
   try{
 
-    stopTicketScanner();
-    box.style.display = "block";
-
-    ticketReader = new ZXingBrowser.BrowserMultiFormatReader();
-
-    const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-
-    if(!devices.length){
-      throw new Error("No se encontró una cámara disponible.");
+    if(!activeEvent){
+      alert("❌ No hay evento activo.");
+      return;
     }
 
-    // Preferimos la cámara trasera en iPhone.
-    const rear = devices.find(d => /back|rear|environment|trasera/i.test(d.label));
-    const deviceId = (rear || devices[devices.length - 1]).deviceId;
+    if(!db){
+      alert("❌ Supabase no está conectado.");
+      return;
+    }
 
-    ticketReaderControls = await ticketReader.decodeFromVideoDevice(
-      deviceId,
-      video,
-      async (result, error) => {
+    if(
+      typeof ZXingBrowser === "undefined" ||
+      !ZXingBrowser.BrowserMultiFormatOneDReader
+    ){
+      alert("❌ No se pudo cargar el lector de códigos de barras. Recarga la página e inténtalo nuevamente.");
+      return;
+    }
 
-        if(result){
-          const code = result.getText();
-          await handleScannedTicket(code);
-          stopTicketScanner();
+    const video = document.getElementById("ticketScannerVideo");
+    const startButton = document.getElementById("startScannerButton");
+    const stopButton = document.getElementById("stopScannerButton");
+
+    if(!video) return;
+
+    // Cerramos cualquier lector/cámara anterior antes de iniciar uno nuevo.
+    stopTicketScanner();
+
+    video.style.display = "block";
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("autoplay", "true");
+    video.muted = true;
+
+    if(startButton) startButton.style.display = "none";
+    if(stopButton) stopButton.style.display = "block";
+
+    setScannerStatus("📷 Abriendo cámara...", "");
+
+    // Los boletos se generan como CODE128, por lo que usamos el lector 1D.
+    // decodeOnce evita lecturas repetidas del mismo boleto.
+    const reader = new ZXingBrowser.BrowserMultiFormatOneDReader();
+    ticketScanner = {
+      stop: () => {
+        try{
+          const stream = video.srcObject;
+          if(stream && stream.getTracks){
+            stream.getTracks().forEach(track => track.stop());
+          }
+        }catch(error){
+          console.warn("No se pudo detener la cámara:", error);
         }
-
       }
+    };
+
+    const result = await reader.decodeOnceFromVideoDevice(
+      undefined,
+      video
     );
+
+    if(!result){
+      throw new Error("No se detectó ningún código.");
+    }
+
+    const barcode = String(result.getText() || "").trim();
+
+    stopTicketScanner();
+
+    if(!barcode){
+      setScannerStatus("❌ El código leído está vacío.", "scanner-invalid");
+      return;
+    }
+
+    setScannerStatus("🔎 Código leído: " + barcode, "");
+    await validateTicketBarcode(barcode);
 
   }catch(error){
 
-    console.error("LECTOR:", error);
-    box.style.display = "none";
-    resultBox.innerHTML = errorMessage(
-      error.message || "No se pudo abrir la cámara. Verifica el permiso de cámara del iPhone."
-    );
+    console.error("Error iniciando lector:", error);
+
+    stopTicketScanner();
+
+    let message = "❌ No se pudo leer el código.";
+
+    if(error?.name === "NotAllowedError"){
+      message = "❌ No se permitió el acceso a la cámara. Revisa el permiso de cámara de Safari.";
+    }else if(error?.name === "NotFoundError"){
+      message = "❌ No se encontró una cámara disponible.";
+    }else if(error?.message){
+      message += " " + error.message;
+    }
+
+    setScannerStatus(message, "scanner-invalid");
 
   }
 }
@@ -1009,121 +1238,62 @@ async function startTicketScanner(){
 function stopTicketScanner(){
 
   try{
-    if(ticketReaderControls){
-      ticketReaderControls.stop();
-      ticketReaderControls = null;
+    if(ticketScanner && typeof ticketScanner.stop === "function"){
+      ticketScanner.stop();
     }
   }catch(error){
-    console.warn(error);
+    console.warn("No se pudo detener el lector:", error);
   }
 
-  try{
-    if(ticketReader){
-      ticketReader.reset();
-      ticketReader = null;
-    }
-  }catch(error){
-    console.warn(error);
-  }
+  ticketScanner = null;
 
   const video = document.getElementById("ticketScannerVideo");
+  const startButton = document.getElementById("startScannerButton");
+  const stopButton = document.getElementById("stopScannerButton");
+
   if(video){
-    const stream = video.srcObject;
-    if(stream && stream.getTracks){
-      stream.getTracks().forEach(track => track.stop());
+    try{
+      const stream = video.srcObject;
+      if(stream && stream.getTracks){
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }catch(error){
+      console.warn("No se pudo detener la cámara:", error);
     }
+
     video.srcObject = null;
+    video.style.display = "none";
   }
+
+  if(startButton) startButton.style.display = "block";
+  if(stopButton) stopButton.style.display = "none";
 }
 
 
-async function handleScannedTicket(barcode){
+async function redeemScannedTicket(){
 
-  const resultBox = document.getElementById("ticketScanResult");
-
-  if(!resultBox || !db){
+  if(!scannedTicket){
+    alert("❌ Primero escanea un boleto válido.");
     return;
   }
 
-  resultBox.innerHTML = `<div class="small">🔎 Buscando boleto...</div>`;
-
-  const result = await db
-    .from("tickets")
-    .select("*")
-    .eq("barcode", barcode)
-    .maybeSingle();
-
-  if(result.error){
-    console.error("ERROR BUSCANDO BOLETO:", result.error);
-    resultBox.innerHTML = errorMessage(result.error.message);
+  if(scannedTicket.used){
+    alert("🔴 Este boleto ya fue utilizado.");
     return;
   }
 
-  if(!result.data){
-    resultBox.innerHTML = `
-      <div class="error">
-        ❌ Boleto no encontrado.<br>
-        <span class="small">Código: ${escapeHtml(barcode)}</span>
-      </div>
-    `;
+  if(!db){
+    alert("❌ Supabase no está conectado.");
     return;
   }
 
-  const ticket = result.data;
+  const confirmed = confirm(
+    "¿Canjear este boleto?\n\n" +
+    scannedTicket.name + "\n" +
+    money(scannedTicket.amount ?? scannedTicket.price)
+  );
 
-  if(activeEvent && Number(ticket.event_id) !== Number(activeEvent.id)){
-    resultBox.innerHTML = `
-      <div class="error">
-        ❌ Este boleto pertenece a otro evento.
-      </div>
-    `;
-    return;
-  }
-
-  if(ticket.used){
-    resultBox.innerHTML = `
-      <div class="error">
-        🔴 BOLETO YA UTILIZADO
-        <br><br>
-        ${escapeHtml(ticket.name)} · ${money(ticket.amount)}
-        <br>
-        <span class="small">${escapeHtml(ticket.barcode)}</span>
-      </div>
-    `;
-    return;
-  }
-
-  resultBox.innerHTML = `
-    <div class="stat" style="padding:16px;border:1px solid #d1d5db;border-radius:14px">
-      <div>
-        <strong>🟢 Boleto válido</strong>
-        <div class="small" style="margin-top:6px">
-          ${escapeHtml(ticket.name)} · ${money(ticket.amount)}
-        </div>
-        <div class="small" style="margin-top:4px">
-          ${escapeHtml(ticket.barcode)}
-        </div>
-      </div>
-    </div>
-
-    <button
-      class="primary"
-      onclick="useScannedTicket(${Number(ticket.id)})"
-      style="margin-top:12px"
-    >
-      ✅ Canjear boleto
-    </button>
-  `;
-}
-
-
-async function useScannedTicket(ticketId){
-
-  const resultBox = document.getElementById("ticketScanResult");
-
-  if(!db || !resultBox){
-    return;
-  }
+  if(!confirmed) return;
 
   const result = await db
     .from("tickets")
@@ -1131,30 +1301,36 @@ async function useScannedTicket(ticketId){
       used:true,
       used_at:new Date().toISOString()
     })
-    .eq("id", ticketId)
+    .eq("event_id", activeEvent.id)
+    .eq("barcode", scannedTicket.barcode)
     .eq("used", false)
-    .select("*")
+    .select()
     .maybeSingle();
 
   if(result.error){
-    console.error("ERROR CANJEANDO BOLETO:", result.error);
-    resultBox.innerHTML = errorMessage(result.error.message);
+    console.error("Error canjeando boleto:", result.error);
+    alert("❌ No se pudo canjear el boleto:\n\n" + result.error.message);
     return;
   }
 
   if(!result.data){
-    resultBox.innerHTML = errorMessage("El boleto ya fue utilizado o no existe.");
+    alert("🔴 El boleto ya fue utilizado o ya no está disponible.");
+    scannedTicket = null;
+    renderScannedTicket(null);
+    setScannerStatus("Boleto no disponible.", "scanner-invalid");
     return;
   }
 
-  resultBox.innerHTML = `
-    <div class="stat" style="padding:18px;border-radius:14px">
-      <strong>✅ BOLETO CANJEADO</strong>
-      <div class="small" style="margin-top:6px">
-        ${escapeHtml(result.data.name)} · ${money(result.data.amount)}
-      </div>
-    </div>
-  `;
+  scannedTicket = result.data;
+
+  alert(
+    "✅ Boleto canjeado\n\n" +
+    scannedTicket.name + "\n" +
+    money(scannedTicket.amount ?? scannedTicket.price)
+  );
+
+  setScannerStatus("✅ Boleto canjeado correctamente.", "scanner-valid");
+  renderScannedTicket(scannedTicket);
 
   await loadTickets();
 }
@@ -2428,7 +2604,11 @@ async function newEvent(){
 async function init(){
 
   const connected =
-    initSupabase();
+    window.addEventListener("beforeunload", () => {
+  stopTicketScanner();
+});
+
+initSupabase();
 
 
   if(!connected){
