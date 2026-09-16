@@ -1827,37 +1827,12 @@ async function confirmSale(){
 
 
   /* ==========================================
-     3. REGISTRAR ENTRADA DE EFECTIVO
+     3. MOVIMIENTO DE CAJA
+
+     Las ventas NO se registran como entradas
+     de cash_movements. La venta ya queda registrada
+     en sales. El cambio es solo informativo.
      ========================================== */
-
-  const movementResult =
-    await db
-      .from("cash_movements")
-      .insert({
-
-        event_id:activeEvent.id,
-
-        type:"in",
-
-        amount:cashReceived,
-
-        detail:`Venta #${sale.id}`
-
-      });
-
-
-  if(movementResult.error){
-
-    alert(
-      "La venta se registró, pero hubo un problema con caja:\n\n" +
-      movementResult.error.message
-    );
-
-    console.error(movementResult.error);
-
-    return;
-
-  }
 
 
   // Los boletos escaneados se ELIMINAN de la tabla de boletos
@@ -1925,12 +1900,16 @@ async function renderClose(){
   }
 
 
+  /* ==========================================
+     FILTRAR POR EVENTO ACTIVO
+     ========================================== */
+
   const eventSales =
     activeEvent
     ?
     sales.filter(
-      s =>
-        Number(s.event_id) ===
+      sale =>
+        Number(sale.event_id) ===
         Number(activeEvent.id)
     )
     :
@@ -1941,43 +1920,112 @@ async function renderClose(){
     activeEvent
     ?
     cashMovements.filter(
-      m =>
-        Number(m.event_id) ===
+      movement =>
+        Number(movement.event_id) ===
         Number(activeEvent.id)
     )
     :
     [];
 
 
+  /* ==========================================
+     VENTAS
+     ========================================== */
+
   const totalSales =
     eventSales.reduce(
-      (sum,s) =>
-        sum + Number(s.total || 0),
+      (sum,sale) =>
+        sum + Number(sale.total || 0),
       0
     );
 
 
+  const numberOfSales =
+    eventSales.length;
+
+
+  /* ==========================================
+     EFECTIVO NETO DE LAS VENTAS
+
+     Esto sirve como dato de control.
+
+     Recibido - cambio = efectivo que queda
+     por esa venta.
+
+     IMPORTANTE:
+     El cambio NO es una entrada.
+     ========================================== */
+
+  const cashNetFromSales =
+    eventSales.reduce(
+      (sum,sale) => {
+
+        const received =
+          Number(sale.cash_received || 0);
+
+        const change =
+          Number(
+            sale.change_given ??
+            sale.change ??
+            0
+          );
+
+        return sum + received - change;
+
+      },
+      0
+    );
+
+
+  /* ==========================================
+     ENTRADAS MANUALES
+
+     Solo incluye movimientos registrados
+     como "in".
+
+     Las ventas NO entran aquí.
+     ========================================== */
+
   const entries =
     eventMovements
-      .filter(m => m.type === "in")
+      .filter(
+        movement =>
+          movement.type === "in"
+      )
       .reduce(
-        (sum,m) =>
-          sum + Number(m.amount || 0),
+        (sum,movement) =>
+          sum + Number(movement.amount || 0),
         0
       );
 
+
+  /* ==========================================
+     SALIDAS MANUALES
+     ========================================== */
 
   const exits =
     eventMovements
-      .filter(m => m.type === "out")
+      .filter(
+        movement =>
+          movement.type === "out"
+      )
       .reduce(
-        (sum,m) =>
-          sum + Number(m.amount || 0),
+        (sum,movement) =>
+          sum + Number(movement.amount || 0),
         0
       );
 
 
-  const net =
+  /* ==========================================
+     CAJA ESPERADA
+
+     Ventas + entradas - salidas
+
+     El cambio ya está contemplado dentro
+     de cada venta, por eso NO se suma aparte.
+     ========================================== */
+
+  const expectedCash =
     totalSales +
     entries -
     exits;
@@ -2001,71 +2049,151 @@ async function renderClose(){
         </div>`
       }
 
+    </div>
+
+
+    <!-- ========================================
+         VENTAS
+         ======================================== -->
+
+    <div class="card">
+
+      <h2>🎟️ Ventas</h2>
+
       <div class="stat">
-
-        <span>
-          Ventas
-        </span>
-
-        <strong>
-          ${money(totalSales)}
-        </strong>
-
+        <span>Número de ventas</span>
+        <strong>${numberOfSales}</strong>
       </div>
 
       <div class="stat">
-
-        <span>
-          Entradas
-        </span>
-
-        <strong>
-          ${money(entries)}
-        </strong>
-
+        <span>Total vendido</span>
+        <strong>${money(totalSales)}</strong>
       </div>
 
       <div class="stat">
-
-        <span>
-          Salidas
-        </span>
-
-        <strong>
-          ${money(exits)}
-        </strong>
-
-      </div>
-
-      <div class="stat">
-
-        <span>
-          Efectivo neto
-        </span>
-
-        <strong>
-          ${money(net)}
-        </strong>
-
-      </div>
-
-      <div class="money">
-        ${money(net)}
+        <span>Efectivo neto de ventas</span>
+        <strong>${money(cashNetFromSales)}</strong>
       </div>
 
       <p class="small">
-        ${eventSales.length} ventas registradas
+        El cambio entregado a los clientes es solamente
+        informativo y no se registra como entrada o salida.
       </p>
-
-      <button
-        class="primary"
-        onclick="exportDailySalesExcel()"
-      >
-        📊 Descargar Excel de ventas del día
-      </button>
 
     </div>
 
+
+    <!-- ========================================
+         ENTRADAS
+         ======================================== -->
+
+    <div class="card">
+
+      <h2>🟢 Entradas de efectivo</h2>
+
+      <div class="stat">
+        <span>Entradas adicionales</span>
+        <strong>${money(entries)}</strong>
+      </div>
+
+      <p class="small">
+        Aquí registra, por ejemplo, el fondo inicial
+        de caja u otras entradas que no sean ventas.
+      </p>
+
+    </div>
+
+
+    <!-- ========================================
+         SALIDAS
+         ======================================== -->
+
+    <div class="card">
+
+      <h2>🔴 Salidas de efectivo</h2>
+
+      <div class="stat">
+        <span>Compras y gastos</span>
+        <strong>${money(exits)}</strong>
+      </div>
+
+    </div>
+
+
+    <!-- ========================================
+         CAJA ESPERADA
+         ======================================== -->
+
+    <div class="card">
+
+      <h2>🏦 Caja esperada</h2>
+
+      <div class="stat">
+        <span>Ventas</span>
+        <strong>${money(totalSales)}</strong>
+      </div>
+
+      <div class="stat">
+        <span>+ Entradas</span>
+        <strong>${money(entries)}</strong>
+      </div>
+
+      <div class="stat">
+        <span>− Salidas</span>
+        <strong>${money(exits)}</strong>
+      </div>
+
+      <div class="money">
+        ${money(expectedCash)}
+      </div>
+
+      <p class="small">
+        Fórmula: ventas + entradas − salidas.
+      </p>
+
+    </div>
+
+
+    <!-- ========================================
+         ARQUEO
+         ======================================== -->
+
+    <div class="card">
+
+      <h2>🔎 Arqueo de caja</h2>
+
+      <label>
+        Efectivo contado físicamente
+      </label>
+
+      <input
+        id="cashCounted"
+        type="number"
+        min="0"
+        step="0.01"
+        placeholder="0.00"
+        oninput="calculateCashDifference(${expectedCash})"
+      >
+
+      <div
+        id="cashDifference"
+        class="stat"
+        style="margin-top:15px;"
+      >
+        <span>Diferencia</span>
+        <strong>—</strong>
+      </div>
+
+      <p class="small">
+        Compara el efectivo físico contra la caja esperada.
+      </p>
+
+    </div>
+
+
+    <!-- ========================================
+         MOVIMIENTO DE CAJA
+         ======================================== -->
 
     <div class="card">
 
@@ -2075,9 +2203,7 @@ async function renderClose(){
 
         <div>
 
-          <label>
-            Importe
-          </label>
+          <label>Importe</label>
 
           <input
             id="movementAmount"
@@ -2091,9 +2217,7 @@ async function renderClose(){
 
         <div>
 
-          <label>
-            Tipo
-          </label>
+          <label>Tipo</label>
 
           <select id="movementType">
 
@@ -2111,14 +2235,12 @@ async function renderClose(){
 
       </div>
 
-      <label>
-        Descripción
-      </label>
+      <label>Descripción</label>
 
       <input
         id="movementDescription"
         type="text"
-        placeholder="Ej. Compra de hielo"
+        placeholder="Ej. Fondo inicial / Compra de hielo"
       >
 
       <button
@@ -2131,9 +2253,13 @@ async function renderClose(){
     </div>
 
 
+    <!-- ========================================
+         HISTORIAL DE MOVIMIENTOS
+         ======================================== -->
+
     <div class="card">
 
-      <h2>📋 Movimientos</h2>
+      <h2>📋 Movimientos de caja</h2>
 
       ${
         eventMovements.length
@@ -2153,7 +2279,11 @@ async function renderClose(){
               </strong>
 
               <div class="small">
-                ${escapeHtml(m.detail || "")}
+                ${escapeHtml(
+                  m.detail ||
+                  m.description ||
+                  ""
+                )}
               </div>
 
             </div>
@@ -2168,14 +2298,88 @@ async function renderClose(){
         :
         `
           <div class="empty">
-            No hay movimientos.
+            No hay movimientos de caja.
           </div>
         `
       }
 
     </div>
 
+
+    <!-- ========================================
+         EXCEL
+         ======================================== -->
+
+    <div class="card">
+
+      <button
+        class="primary"
+        onclick="exportDailySalesExcel()"
+      >
+        📊 Descargar Excel de ventas del día
+      </button>
+
+    </div>
+
   `;
+
+}
+
+
+/* =====================================================
+   DIFERENCIA DE CAJA
+   ===================================================== */
+
+function calculateCashDifference(expectedCash){
+
+  const input =
+    document.getElementById("cashCounted");
+
+  const output =
+    document.getElementById("cashDifference");
+
+  if(!input || !output){
+    return;
+  }
+
+  const counted =
+    Number(input.value || 0);
+
+  const difference =
+    counted - Number(expectedCash || 0);
+
+  if(counted < 0){
+
+    output.innerHTML = `
+      <span>Diferencia</span>
+      <strong>—</strong>
+    `;
+
+    return;
+  }
+
+  if(difference > 0){
+
+    output.innerHTML = `
+      <span>🟢 Sobrante</span>
+      <strong>${money(difference)}</strong>
+    `;
+
+  }else if(difference < 0){
+
+    output.innerHTML = `
+      <span>🔴 Faltante</span>
+      <strong>${money(Math.abs(difference))}</strong>
+    `;
+
+  }else{
+
+    output.innerHTML = `
+      <span>✅ Caja cuadrada</span>
+      <strong>${money(0)}</strong>
+    `;
+
+  }
 
 }
 
