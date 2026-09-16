@@ -15,6 +15,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 
@@ -667,6 +668,120 @@ async function loadCashMovements(){
 
 }
 
+
+/* =====================================================
+   EXPORTAR VENTAS DEL DÍA A EXCEL
+   ===================================================== */
+async function exportDailySalesExcel(){
+
+  if(!db){
+    alert("❌ Supabase no está conectado.");
+    return;
+  }
+
+  if(!activeEvent){
+    alert("❌ No hay evento activo.");
+    return;
+  }
+
+  if(typeof XLSX === "undefined"){
+    alert("❌ No se pudo cargar el generador de Excel. Recarga la página e inténtalo nuevamente.");
+    return;
+  }
+
+  try{
+
+    const now = new Date();
+
+    const start = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0
+    );
+
+    const end = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate() + 1, 0,0,0,0
+    );
+
+    const result = await db
+      .from("sales")
+      .select("*")
+      .eq("event_id", activeEvent.id)
+      .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString())
+      .order("created_at",{ascending:true});
+
+    if(result.error){
+      console.error("ERROR EXPORTANDO VENTAS:", result.error);
+      alert("❌ No se pudieron consultar las ventas del día:\n\n" + result.error.message);
+      return;
+    }
+
+    const dailySales = result.data || [];
+
+    if(!dailySales.length){
+      alert("⚠️ No hay ventas registradas hoy para este evento.");
+      return;
+    }
+
+    const formatDateTime = value => value
+      ? new Date(value).toLocaleString("es-MX",{dateStyle:"short",timeStyle:"medium"})
+      : "";
+
+    const formatItems = items => {
+      if(!Array.isArray(items)) return "";
+      return items.map(item =>
+        `${item.product_name || "Producto"} x${item.quantity || 0} (${money(item.subtotal || 0)})`
+      ).join(" | ");
+    };
+
+    const rows = dailySales.map(sale => ({
+      "Venta #": sale.id,
+      "Fecha y hora": formatDateTime(sale.created_at),
+      "Evento": activeEvent.name,
+      "Total": Number(sale.total || 0),
+      "Efectivo recibido": Number(sale.cash_received || 0),
+      "Cambio": Number(sale.change_given || 0),
+      "Productos": formatItems(sale.items)
+    }));
+
+    const total = dailySales.reduce((sum,sale) => sum + Number(sale.total || 0), 0);
+    const cashReceived = dailySales.reduce((sum,sale) => sum + Number(sale.cash_received || 0), 0);
+    const changeGiven = dailySales.reduce((sum,sale) => sum + Number(sale.change_given || 0), 0);
+
+    const summaryRows = [
+      {"Concepto":"Evento","Valor":activeEvent.name},
+      {"Concepto":"Fecha","Valor":now.toLocaleDateString("es-MX")},
+      {"Concepto":"Número de ventas","Valor":dailySales.length},
+      {"Concepto":"Total vendido","Valor":total},
+      {"Concepto":"Efectivo recibido","Valor":cashReceived},
+      {"Concepto":"Cambio entregado","Valor":changeGiven}
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const salesSheet = XLSX.utils.json_to_sheet(rows);
+    salesSheet["!cols"] = [
+      {wch:10},{wch:20},{wch:30},{wch:14},{wch:20},{wch:14},{wch:80}
+    ];
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    summarySheet["!cols"] = [{wch:25},{wch:45}];
+
+    XLSX.utils.book_append_sheet(workbook, salesSheet, "Ventas");
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen");
+
+    const dateName =
+      now.getFullYear() + "-" +
+      String(now.getMonth()+1).padStart(2,"0") + "-" +
+      String(now.getDate()).padStart(2,"0");
+
+    XLSX.writeFile(workbook, `KERMES_VENTAS_${dateName}.xlsx`);
+
+    alert(`✅ Excel generado correctamente.\n\nVentas: ${dailySales.length}\nTotal vendido: ${money(total)}`);
+
+  }catch(error){
+    console.error("ERROR GENERANDO EXCEL:", error);
+    alert("❌ No se pudo generar el Excel:\n\n" + (error?.message || String(error)));
+  }
+}
 
 /* =====================================================
    BOLETOS
@@ -1894,6 +2009,13 @@ async function renderClose(){
       <p class="small">
         ${eventSales.length} ventas registradas
       </p>
+
+      <button
+        class="primary"
+        onclick="exportDailySalesExcel()"
+      >
+        📊 Descargar Excel de ventas del día
+      </button>
 
     </div>
 
