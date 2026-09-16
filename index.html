@@ -1835,22 +1835,41 @@ async function confirmSale(){
      ========================================== */
 
 
-  // Los boletos escaneados se ELIMINAN de la tabla de boletos
-  // únicamente después de que la venta y el movimiento de caja fueron registrados correctamente.
-  // Así, un boleto no puede volver a aparecer como disponible después de una compra exitosa.
+  // Los boletos escaneados NO se eliminan.
+  // Se conservan en la tabla y se marcan como usados únicamente después
+  // de que la venta y su detalle fueron registrados correctamente.
+  // De esta forma podemos conservar el historial del boleto y evitar que
+  // vuelva a utilizarse.
   if(pendingTicketCodes.length){
     const ticketResult = await db
       .from("tickets")
-      .delete()
+      .update({
+        used:true,
+        used_at:new Date().toISOString()
+      })
       .eq("event_id", activeEvent.id)
-      .in("barcode", pendingTicketCodes);
+      .in("barcode", pendingTicketCodes)
+      .eq("used", false)
+      .select();
 
     if(ticketResult.error){
-      console.error("La venta se registró, pero no se pudieron eliminar los boletos:", ticketResult.error);
+      console.error("La venta se registró, pero no se pudieron marcar como usados los boletos:", ticketResult.error);
       alert(
-        "⚠️ La venta se registró correctamente, pero hubo un problema al eliminar los boletos escaneados.\n\n" +
+        "⚠️ La venta se registró correctamente, pero hubo un problema al marcar como usados los boletos escaneados.\n\n" +
         ticketResult.error.message
       );
+    }else{
+      const updatedTickets = ticketResult.data || [];
+      if(updatedTickets.length !== pendingTicketCodes.length){
+        console.warn("No todos los boletos pendientes pudieron marcarse como usados.", {
+          expected:pendingTicketCodes.length,
+          updated:updatedTickets.length
+        });
+        alert(
+          "⚠️ La venta se registró, pero no todos los boletos pudieron marcarse como usados.\n\n" +
+          "Revisa la sección de Boletos antes de volver a utilizar alguno."
+        );
+      }
     }
   }
 
