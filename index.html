@@ -1860,24 +1860,22 @@ async function confirmSale(){
   }
 
 
-  // Los boletos escaneados se marcan como usados SOLO después de registrar la venta.
+  // Los boletos escaneados se ELIMINAN de la tabla de boletos
+  // únicamente después de que la venta y el movimiento de caja fueron registrados correctamente.
+  // Así, un boleto no puede volver a aparecer como disponible después de una compra exitosa.
   if(pendingTicketCodes.length){
-    const usedAt = new Date().toISOString();
+    const ticketResult = await db
+      .from("tickets")
+      .delete()
+      .eq("event_id", activeEvent.id)
+      .in("barcode", pendingTicketCodes);
 
-    for(const code of pendingTicketCodes){
-      const ticketResult = await db
-        .from("tickets")
-        .update({
-          used:true,
-          used_at:usedAt
-        })
-        .eq("event_id", activeEvent.id)
-        .eq("barcode", code)
-        .eq("used", false);
-
-      if(ticketResult.error){
-        console.error("No se pudo marcar boleto como usado:", ticketResult.error);
-      }
+    if(ticketResult.error){
+      console.error("La venta se registró, pero no se pudieron eliminar los boletos:", ticketResult.error);
+      alert(
+        "⚠️ La venta se registró correctamente, pero hubo un problema al eliminar los boletos escaneados.\n\n" +
+        ticketResult.error.message
+      );
     }
   }
 
