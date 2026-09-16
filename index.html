@@ -958,7 +958,7 @@ function renderSell(){
       <h2>📷 Lector de boletos</h2>
 
       <div class="small">
-        Escanea el código de barras del boleto con la cámara del iPhone.
+        Escanea el código QR del boleto con la cámara del iPhone.
       </div>
 
       <div class="ticket-scanner">
@@ -1319,9 +1319,9 @@ async function startTicketScanner(){
 
     if(
       typeof ZXingBrowser === "undefined" ||
-      !ZXingBrowser.BrowserMultiFormatOneDReader
+      !ZXingBrowser.BrowserQRCodeReader
     ){
-      alert("❌ No se pudo cargar el lector de códigos de barras. Recarga la página e inténtalo nuevamente.");
+      alert("❌ No se pudo cargar el lector QR. Recarga la página e inténtalo nuevamente.");
       return;
     }
 
@@ -1331,7 +1331,6 @@ async function startTicketScanner(){
 
     if(!video) return;
 
-    // Cerramos cualquier lector/cámara anterior antes de iniciar uno nuevo.
     stopTicketScanner();
 
     video.style.display = "block";
@@ -1344,13 +1343,50 @@ async function startTicketScanner(){
 
     setScannerStatus("📷 Abriendo cámara...", "");
 
-    // Los boletos se generan como CODE128, por lo que usamos el lector 1D.
-    // decodeOnce evita lecturas repetidas del mismo boleto.
-    const reader = new ZXingBrowser.BrowserMultiFormatOneDReader();
+    // QR: pedimos la cámara trasera y una resolución alta para facilitar
+    // el enfoque de códigos impresos en los boletos.
+    const constraints = {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+
+    // En dispositivos compatibles intentamos activar enfoque continuo.
+    try{
+      const track = stream.getVideoTracks?.()[0];
+      const capabilities = track?.getCapabilities?.();
+      if(track && capabilities?.focusMode?.includes("continuous")){
+        await track.applyConstraints({
+          advanced: [{ focusMode: "continuous" }]
+        });
+      }
+    }catch(focusError){
+      console.warn("No se pudo activar el enfoque continuo:", focusError);
+    }
+
+    const reader = new ZXingBrowser.BrowserQRCodeReader();
+    let processing = false;
+    let controls = null;
+
+    // Guardamos cámara + lector juntos para que stopTicketScanner pueda
+    // detenerlos siempre, incluso si cambiamos de pantalla.
     ticketScanner = {
       stop: () => {
         try{
-          const stream = video.srcObject;
+          if(controls && typeof controls.stop === "function"){
+            controls.stop();
+          }
+        }catch(error){
+          console.warn("No se pudo detener el lector QR:", error);
+        }
+        try{
           if(stream && stream.getTracks){
             stream.getTracks().forEach(track => track.stop());
           }
@@ -1360,39 +1396,52 @@ async function startTicketScanner(){
       }
     };
 
-    const result = await reader.decodeOnceFromVideoDevice(
+    setScannerStatus("🎯 Apunta al QR del boleto. Se detectará automáticamente.", "");
+
+    controls = reader.decodeFromVideoDevice(
       undefined,
-      video
+      video,
+      async (result, error) => {
+
+        if(processing) return;
+        if(!result) return;
+
+        const qrValue = String(result.getText() || "").trim();
+        if(!qrValue) return;
+
+        processing = true;
+        setScannerStatus("🔎 QR leído. Validando boleto...", "");
+
+        try{
+          if(controls && typeof controls.stop === "function"){
+            controls.stop();
+          }
+        }catch(e){
+          console.warn("No se pudo detener el lector QR:", e);
+        }
+
+        await validateTicketBarcode(qrValue);
+
+        // La validación actualiza el carrito y redibuja la pantalla.
+        // Cerramos la cámara después de cada boleto para evitar lecturas dobles.
+        stopTicketScanner();
+      }
     );
-
-    if(!result){
-      throw new Error("No se detectó ningún código.");
-    }
-
-    const barcode = String(result.getText() || "").trim();
-
-    stopTicketScanner();
-
-    if(!barcode){
-      setScannerStatus("❌ El código leído está vacío.", "scanner-invalid");
-      return;
-    }
-
-    setScannerStatus("🔎 Código leído: " + barcode, "");
-    await validateTicketBarcode(barcode);
 
   }catch(error){
 
-    console.error("Error iniciando lector:", error);
+    console.error("Error iniciando lector QR:", error);
 
     stopTicketScanner();
 
-    let message = "❌ No se pudo leer el código.";
+    let message = "❌ No se pudo abrir el lector QR.";
 
     if(error?.name === "NotAllowedError"){
-      message = "❌ No se permitió el acceso a la cámara. Revisa el permiso de cámara de Safari.";
+      message = "❌ No se permitió el acceso a la cámara. En Safari, permite la cámara para este sitio.";
     }else if(error?.name === "NotFoundError"){
       message = "❌ No se encontró una cámara disponible.";
+    }else if(error?.name === "NotReadableError"){
+      message = "❌ La cámara está siendo utilizada por otra aplicación o pestaña.";
     }else if(error?.message){
       message += " " + error.message;
     }
@@ -1401,7 +1450,6 @@ async function startTicketScanner(){
 
   }
 }
-
 
 function stopTicketScanner(){
 
@@ -1429,6 +1477,7 @@ function stopTicketScanner(){
       console.warn("No se pudo detener la cámara:", error);
     }
 
+    video.pause();
     video.srcObject = null;
     video.style.display = "none";
   }
@@ -2569,10 +2618,10 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
   const eventName = String(activeEvent?.name || "Kermés");
 
   const cards = selectedTickets.map((ticket, index) => {
-    const barcode = String(ticket.barcode || "");
+    const qrValue = String(ticket.barcode || "");
     const name = String(ticket.name || "");
     const amount = Number(ticket.amount ?? ticket.price ?? 0);
-    const barcodeId = "barcode_" + index;
+    const qrId = "qr_" + index;
 
     return `
       <div class="ticket">
@@ -2580,22 +2629,21 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
         <div class="event">${escapeHtml(eventName)}</div>
         <div class="product">${escapeHtml(name)}</div>
         <div class="price">${money(amount)}</div>
-        <svg id="${barcodeId}"></svg>
-        <div class="code">${escapeHtml(barcode)}</div>
+        <div id="${qrId}" class="qr"></div>
+        <div class="code">${escapeHtml(qrValue)}</div>
         <div class="status">🎟️ BOLETO VÁLIDO</div>
       </div>
     `;
   }).join("");
 
-  const barcodeScripts = selectedTickets.map((ticket, index) => {
-    const barcode = String(ticket.barcode || "");
+  const qrScripts = selectedTickets.map((ticket, index) => {
+    const qrValue = String(ticket.barcode || "");
     return `
-      JsBarcode('#barcode_${index}', ${JSON.stringify(barcode)}, {
-        format: 'CODE128',
-        width: 1.35,
-        height: 42,
-        displayValue: false,
-        margin: 2
+      new QRCode(document.getElementById('qr_${index}'), {
+        text: ${JSON.stringify(qrValue)},
+        width: 150,
+        height: 150,
+        correctLevel: QRCode.CorrectLevel.M
       });
     `;
   }).join("\n");
@@ -2606,7 +2654,7 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planilla de boletos - KERMÉS POS</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
 <style>
   @page { size: A4 portrait; margin: 8mm; }
   * { box-sizing: border-box; }
@@ -2623,7 +2671,7 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
     border-radius:8px;
     padding:4mm 3mm;
     text-align:center;
-    min-height:62mm;
+    min-height:72mm;
     break-inside:avoid;
     page-break-inside:avoid;
     display:flex;
@@ -2635,7 +2683,8 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
   .event { font-size:8px; color:#555; margin-bottom:2mm; }
   .product { font-size:15px; font-weight:900; margin:1mm 0; }
   .price { font-size:13px; font-weight:900; margin-bottom:2mm; }
-  svg { width:100%; max-width:52mm; height:12mm; }
+  .qr { width:150px; height:150px; display:flex; align-items:center; justify-content:center; }
+  .qr img, .qr canvas { width:150px !important; height:150px !important; image-rendering:auto; }
   .code { margin-top:1mm; font-family:monospace; font-size:7px; letter-spacing:.4px; word-break:break-all; }
   .status { margin-top:1.5mm; font-size:7px; font-weight:700; }
   @media print {
@@ -2648,12 +2697,12 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
 <script>
 (function(){
   function ready(){
-    if(typeof JsBarcode === 'function'){
+    if(typeof QRCode === 'function'){
       try {
-        ${barcodeScripts}
-        setTimeout(function(){ window.print(); }, 500);
+        ${qrScripts}
+        setTimeout(function(){ window.print(); }, 700);
       } catch(e) {
-        document.body.insertAdjacentHTML('afterbegin', '<p style="font-family:Arial;color:#b91c1c">No se pudieron generar los códigos de barras.</p>');
+        document.body.insertAdjacentHTML('afterbegin', '<p style="font-family:Arial;color:#b91c1c">No se pudieron generar los códigos QR.</p>');
         console.error(e);
       }
     } else {
@@ -2666,8 +2715,6 @@ function openPrintableTicketSheet(printWindow, selectedTickets){
 </body>
 </html>`;
 
-  // Escribimos directamente en la ventana nueva. Esto es más estable en Safari/iPhone
-  // que navegar a un Blob URL y evita que la planilla quede en blanco o no aparezca.
   try {
     printWindow.document.open();
     printWindow.document.write(sheetHTML);
@@ -2704,19 +2751,20 @@ function openPrintableTicket(printWindow, ticket){
     return;
   }
 
-  const barcodeValue = String(ticket.barcode || "");
+  const qrValue = String(ticket.barcode || "");
   const productName = String(ticket.name || "");
   const amount = Number(ticket.amount ?? ticket.price ?? 0);
 
   // Documento completamente independiente de KERMÉS POS.
-  // No reutiliza el HTML de la aplicación, por lo que no puede duplicar la interfaz.
+  // El mismo identificador KRM-... se conserva en Supabase, pero ahora
+  // se representa visualmente como QR para una lectura más sencilla.
   const ticketHTML = `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boleto KERMÉS</title>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
 <style>
   @page { size: auto; margin: 8mm; }
   * { box-sizing: border-box; }
@@ -2756,11 +2804,20 @@ function openPrintableTicket(printWindow, ticket){
     font-weight: 900;
     margin-bottom: 18px;
   }
-  #barcode {
-    max-width: 100%;
+  #qrcode {
+    width: 240px;
+    height: 240px;
+    margin: 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #qrcode img, #qrcode canvas {
+    width: 240px !important;
+    height: 240px !important;
   }
   .code {
-    margin-top: 8px;
+    margin-top: 10px;
     font-family: monospace;
     font-size: 13px;
     letter-spacing: 1px;
@@ -2782,23 +2839,27 @@ function openPrintableTicket(printWindow, ticket){
     <div class="event">${escapeHtml(activeEvent ? activeEvent.name : "Kermés")}</div>
     <div class="product">${escapeHtml(productName)}</div>
     <div class="price">${money(amount)}</div>
-    <svg id="barcode"></svg>
-    <div class="code">${escapeHtml(barcodeValue)}</div>
+    <div id="qrcode"></div>
+    <div class="code">${escapeHtml(qrValue)}</div>
     <div class="status">🎟️ BOLETO VÁLIDO</div>
   </div>
 
 <script>
 (function(){
   function ready(){
-    if(typeof JsBarcode === 'function'){
-      JsBarcode('#barcode', ${JSON.stringify(barcodeValue)}, {
-        format: 'CODE128',
-        width: 2,
-        height: 72,
-        displayValue: false,
-        margin: 8
-      });
-      setTimeout(function(){ window.print(); }, 600);
+    if(typeof QRCode === 'function'){
+      try {
+        new QRCode(document.getElementById('qrcode'), {
+          text: ${JSON.stringify(qrValue)},
+          width: 240,
+          height: 240,
+          correctLevel: QRCode.CorrectLevel.M
+        });
+        setTimeout(function(){ window.print(); }, 700);
+      } catch(e) {
+        document.body.insertAdjacentHTML('afterbegin', '<p style="font-family:Arial;color:#b91c1c;text-align:center">No se pudo generar el código QR.</p>');
+        console.error(e);
+      }
     } else {
       setTimeout(ready, 150);
     }
@@ -2809,7 +2870,6 @@ function openPrintableTicket(printWindow, ticket){
 </body>
 </html>`;
 
-  // Blob URL evita que Safari/GitHub Pages vuelva a cargar index.html.
   const blob = new Blob([ticketHTML], {type: "text/html;charset=utf-8"});
   const url = URL.createObjectURL(blob);
 
